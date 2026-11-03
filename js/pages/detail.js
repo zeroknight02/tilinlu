@@ -36,7 +36,7 @@ PAGES.questionDetail.render=function(el,params){
     else tag='<span class="chip c-sub">未作答</span>';
     let h='<div class="q-count">第 <b>'+(qi+1)+'</b> / '+S.questionIds.length+' 题</div>';
     h+='<div class="exam-meta">'+qChips(q)+tag+'<span class="chip'+(isFav(q.id)?' c-fav':'')+'" style="cursor:pointer" data-act="qd.fav">'+(isFav(q.id)?'★ 已收藏':'☆ 收藏')+'</span></div>';
-    h+='<div class="card"><div class="q-text">'+esc(q.q)+'</div>'+qExtrasHTML(q);
+    h+='<div class="card"><div class="q-text">'+qTextHTML(q)+'</div>'+qExtrasHTML(q);
     if(q.o.length){
       h+='<div class="opts" style="margin-top:12px">';
       q.o.forEach((t,i)=>{
@@ -57,7 +57,7 @@ PAGES.questionDetail.render=function(el,params){
       +'<div class="detail-ans-line">我选的答案：<b class="'+myCls+'">'+esc(myAns)+'</b></div>'
       +'<div class="detail-ans-line">正确答案：<b class="da-ok">'+esc(isObjQ(q)?fmtAns(q,q.a):'见解析')+'</b></div>'
       +'<div class="detail-ans-line">本题分值：<b>'+qPoints(q,S.exam,S.level)+' 分</b></div></div>';
-    h+='<div class="analysis"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+'</div>';
+    h+='<div class="analysis"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+eImgsHTML(q)+'</div>';
     if(q.aiChat)h+='<div class="analysis" style="margin-top:8px"><span class="a-t">AI 追问记录</span>'+esc(q.aiChat)+'</div>';
     h+='<div class="card card-sm" style="margin-top:10px">'
       +'<div class="row" style="margin:0"><button class="btn btn-plain btn-sm" data-act="qd.aiGen">🤖 '+(q.e?'AI 重写解析':'AI 生成解析')+'</button>'
@@ -73,6 +73,7 @@ PAGES.questionDetail.render=function(el,params){
   el.innerHTML=topbarHTML('题目详情')
     +bodyHTML
     +'<div class="botbar"><div class="botbar-in">'
+    +'<button class="btn btn-ghost btn-sm" data-act="qd.edit">编辑</button>'
     +'<button class="btn btn-plain" id="qd-prev" data-act="qd.prev"'+(prevOk?'':' disabled')+'>上一题</button>'
     +'<button class="btn btn-primary btn-big" id="qd-next" data-act="qd.next"'+(nextOk?'':' disabled')+'>下一题</button>'
     +'</div></div>';
@@ -152,3 +153,11 @@ function detailNavHTML(S){
   }
   return h;
 }
+
+/* 从详情页进编辑：改完 goBack 回到原详情 */
+ACTIONS['qd.edit']=()=>{
+  const p=curPage();
+  if(!p||!p.params||!p.params.questionId){toast('没有题目','warn');return;}
+  QE=null;
+  goTo('qEdit',{id:p.params.questionId});
+};

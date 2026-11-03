@@ -1,6 +1,10 @@
 /* 题灵录 · Service Worker：应用壳预缓存，飞行模式离线可用 */
 /* 缓存名里的数字必须与 index.html 的 APP_BUILD 一致；改版本时两边一起改 */
-const CACHE = 'qt-shell-v38';
+const CACHE = 'qt-shell-v41';
+/* 图片单独一个缓存：不随应用版本删除。
+   真题的公式图/题目图有 25 万张，看过的图靠这个缓存离线可用；
+   若混在应用壳缓存里，每次更新都会被清空。 */
+const IMG_CACHE = 'qt-img-v1';
 const SHELL = [
   './',
   './index.html',
@@ -31,7 +35,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== IMG_CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -67,8 +71,20 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // 解析库 CDN（mammoth / pdfjs）：缓存优先，首次联网使用后即可离线
+  // jsDelivr：图片进独立缓存（永久），解析库仍进应用壳缓存
   if (/cdn\.jsdelivr\.net/.test(url.hostname)) {
+    if (e.request.destination === 'image') {
+      e.respondWith(
+        caches.open(IMG_CACHE).then(c => c.match(e.request).then(r => {
+          if (r) return r;
+          return fetch(e.request).then(r2 => {
+            if (r2 && r2.ok) c.put(e.request, r2.clone()).catch(() => {});
+            return r2;
+          });
+        })).catch(() => fetch(e.request))
+      );
+      return;
+    }
     e.respondWith(
       caches.match(e.request).then(r => r || fetch(e.request).then(r2 => {
         const cp = r2.clone();

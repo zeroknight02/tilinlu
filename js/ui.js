@@ -141,6 +141,34 @@ function fmtAns(q,ansVal){
   if(q.type==='multiple')return ansVal.slice().sort().map(i=>String.fromCharCode(65+i)).join('、');
   return'未作答';
 }
+/* 题干渲染：文字里的【图N】就地换成对应图片，公式不用再对着下面的图找。
+   没有标记时按普通文本输出，行为和以前一致。 */
+function qTextHTML(q){
+  const t=String((q&&q.q)||'');
+  const imgs=(q&&Array.isArray(q.imgs)&&q.imgs.length)?q.imgs:((q&&q.img)?[q.img]:[]);
+  if(!imgs.length||t.indexOf('【图')<0)return esc(t);
+  let out='',last=0;
+  const re=/【图(\d+)】/g;let m;
+  while((m=re.exec(t))!==null){
+    out+=esc(t.slice(last,m.index));
+    const u=imgs[parseInt(m[1],10)-1];
+    out+=u?('<img class="q-img q-img-in" src="'+imgSrc(u)+'" alt="图'+m[1]+'">'):esc(m[0]);
+    last=m.index+m[0].length;
+  }
+  out+=esc(t.slice(last));
+  return out;
+}
+/* 图片引用解析：@键 → 图片表里的 data URI；普通 URL 原样返回 */
+function imgSrc(u){
+  if(!u)return'';
+  if(u.charAt(0)==='@'){const t=IMG_TAB[u.slice(1)];return t||'';}
+  return u;
+}
+/* 解析配图（数量关系/资料分析的公式图），跟在解析文字后面 */
+function eImgsHTML(q){
+  if(!q||!Array.isArray(q.eimgs)||!q.eimgs.length)return'';
+  return '<div class="e-imgs">'+q.eimgs.map(u=>'<img class="q-img" src="'+imgSrc(u)+'" alt="解析配图" loading="lazy">').join('')+'</div>';
+}
 function qChips(q){
   let h='';
   [q.exam,q.subject].filter(x=>x).forEach(x=>h+='<span class="chip c-sub">'+esc(x)+'</span>');

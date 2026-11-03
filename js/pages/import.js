@@ -204,12 +204,13 @@ function parseImportJSON(text){
   const qs=Array.isArray(obj)?obj:(Array.isArray(obj.questions)?obj.questions:null);
   if(!qs)throw new Error('JSON 需要是题目数组，或含 questions 字段的对象');
   const papers=(Array.isArray(obj)?[]:(obj.papers||[])).filter(p=>p&&p.id&&p.title);
+  const images=(!Array.isArray(obj)&&obj.images&&typeof obj.images==='object')?obj.images:{};
   const items=qs.map(raw=>{
     const nq=normQuestion(raw,0);
     const errs=validQuestion(nq);
     return{ok:errs.length===0,errs,skip:false,data:nq};
   });
-  return{items,papers};
+  return{items,papers,images};
 }
 function autoParseText(text){
   const raw=String(text||'').trim();
@@ -255,6 +256,9 @@ PAGES.importPage.render=function(el){
     +'<div class="row" style="margin-top:12px">'
     +'<button class="btn btn-primary btn-big" data-act="imp.auto">自动识别并预览</button>'
     +'<button class="btn btn-ghost" data-act="imp.examples">查看格式示例</button></div>'
+    +'<label class="fl" style="margin-top:16px">或选择 JSON 题库文件（.json）</label>'
+    +'<input type="file" accept=".json,application/json" data-chg="imp.jsonfile">'
+    +'<div class="ai-status" id="json-file-status"></div>'
     +'<div class="file-note">自动匹配顺序：JSON → Markdown 表格 → Markdown 正文 → 分题块式（题号 /【答案】/【解析】/ A.B.C.D.）→ 行式简洁 → 整段一题。兼容全角半角、A./A、/A．、答案：/【答案】、ABC / A,B,C 等写法，Markdown 的 #、**、- 等标记会自动去掉，全部解析在本地完成。</div></div>';
   if(mode==='mobile'){
     body=pasteCard;
@@ -275,7 +279,10 @@ PAGES.importPage.render=function(el){
       pane='<div class="card"><label class="fl">粘贴 JSON</label>'
         +'<textarea rows="10" data-imp="jsonDraft" placeholder=\'{"questions":[…],"papers":[…]}\'>'+esc(IMP.jsonDraft)+'</textarea>'
         +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.json">解析 JSON 并预览</button>'
-        +'<div class="file-note">支持纯题目数组，或含 questions / papers 的对象；字段说明见“查看格式示例”。</div></div>';
+        +'<label class="fl" style="margin-top:16px">或选择 JSON 文件（大批量推荐）</label>'
+        +'<input type="file" accept=".json,application/json" data-chg="imp.jsonfile">'
+        +'<div class="ai-status" id="json-file-status"></div>'
+        +'<div class="file-note">支持纯题目数组，或含 questions / papers 的对象；字段说明见“查看格式示例”。超过 300 题会跳过逐条预览直接导入。</div></div>';
     }else if(IMP.tab==='word'){
       pane='<div class="card"><label class="fl">选择 Word 文档（.docx）</label>'
         +'<input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-chg="imp.file">'
@@ -357,11 +364,73 @@ ACTIONS['imp.auto']=()=>{
   if(!IMP.draft.trim()){toast('请先粘贴题目内容','warn');return;}
   autoParseIntoPreview(IMP.draft);
 };
+/* 大批量（如整份真题库）逐条预览会生成上万行 DOM，手机直接卡死，
+   所以超过这个数量就跳过预览、直接合并导入 */
+const BIG_IMPORT=300;
+function importParsed(r){
+  if(r.items.length>BIG_IMPORT){
+    const okN=r.items.filter(i=>i.ok&&!i.skip).length;
+    const pN=(r.papers||[]).length;
+    qtConfirm({title:'大批量导入',
+      msg:'识别到 '+r.items.length+' 题（可导入 '+okN+' 题）'+(pN?('、'+pN+' 套卷'):'')+'。\n逐条预览会让手机卡死，将直接合并导入。重复题目会全部保留，不会去重删除。',
+      okText:'直接导入',
+      onOk:()=>{doMergeImport(r.items.filter(i=>i.ok&&!i.skip),r.papers||[],r.images||{});}});
+    return;
+  }
+  openPreview(r);
+}
+/* 合并导入：用 id 索引做 O(n) 合并，避免几万题时 O(n²) 卡死 */
+function doMergeImport(items,papers,images){
+  if(images&&typeof images==='object'){
+    let added=0;
+    Object.keys(images).forEach(k=>{if(!IMG_TAB[k]){IMG_TAB[k]=images[k];added++;}});
+    if(added)saveImgTab();
+  }
+  const idx=Object.create(null);
+  BANK.forEach((q,i)=>{idx[q.id]=i;});
+  let add=0,upd=0;
+  uniqueBatchIds(items.map(it=>normQuestion(it.data,0))).forEach(nq=>{
+    const k=idx[nq.id];
+    if(k!=null){BANK[k]=nq;upd++;}else{idx[nq.id]=BANK.length;BANK.push(nq);add++;}
+  });
+  const pidx=Object.create(null);
+  PAPERS.forEach((p,i)=>{pidx[p.id]=i;});
+  let pAdd=0;
+  (papers||[]).forEach(p=>{
+    if(!p||!p.id||!p.title)return;
+    const k=pidx[p.id];
+    if(k!=null)PAPERS[k]=p;else{pidx[p.id]=PAPERS.length;PAPERS.push(p);pAdd++;}
+  });
+  saveBank();
+  toast('导入完成：新增 '+add+' 题'+(upd?('，更新 '+upd+' 题'):'')+(pAdd?('，'+pAdd+' 套卷'):''),'ok');
+  goHome();
+}
+CHANGES['imp.jsonfile']=async(d,t)=>{
+  const f=t.files&&t.files[0];if(!f)return;
+  const st=$id('json-file-status');
+  const setSt=x=>{if(st)st.textContent=x;};
+  try{
+    const sz=f.size>1048576?((f.size/1048576).toFixed(1)+' MB'):(Math.round(f.size/1024)+' KB');
+    setSt('正在读取 '+f.name+'（'+sz+'）…');
+    const txt=await f.text();
+    setSt('解析中…（大文件需要几秒）');
+    await new Promise(r=>setTimeout(r,30));
+    const r=parseImportJSON(txt);
+    if(!r.items.length)throw new Error('文件里没有解析到题目');
+    setSt('识别到 '+r.items.length+' 题 / '+(r.papers||[]).length+' 套卷');
+    importParsed(r);
+  }catch(e){
+    setSt('导入失败：'+(e.message||e));
+    toast('JSON 文件导入失败','err');
+  }finally{
+    t.value='';
+  }
+};
 ACTIONS['imp.json']=()=>{
   try{
     const r=parseImportJSON(IMP.jsonDraft);
     if(!r.items.length)throw new Error('没有解析到题目');
-    openPreview(r);
+    importParsed(r);
   }catch(e){toast('JSON 解析失败：'+(e.message||e),'err');}
 };
 CHANGES['imp.file']=(d,t)=>{
@@ -745,7 +814,7 @@ ACTIONS['ai.fallback']=()=>{
 /* ---- 导入预览 ---- */
 let PRE={items:[],papers:[]};
 function openPreview(r){
-  PRE={items:(r.items||[]).map(it=>{it.open=!it.ok;return it;}),papers:r.papers||[]};
+  PRE={items:(r.items||[]).map(it=>{it.open=!it.ok;return it;}),papers:r.papers||[],images:r.images||{}};
   goTo('importPreview',{});
 }
 PAGES.importPreview={title:'导入预览'};
@@ -871,18 +940,7 @@ function uniqueBatchIds(arr){
 ACTIONS['prev.merge']=()=>{
   const items=PRE.items.filter(i=>i.ok&&!i.skip);
   if(!items.length){toast('没有可导入的题目（失败条目需先修正）','warn');return;}
-  let add=0,upd=0;
-  uniqueBatchIds(items.map(it=>normQuestion(it.data,0))).forEach(nq=>{
-    const ex=BANK.findIndex(q=>q.id===nq.id);
-    if(ex>=0){BANK[ex]=nq;upd++;}else{BANK.push(nq);add++;}
-  });
-  (PRE.papers||[]).forEach(p=>{
-    const i=PAPERS.findIndex(x=>x.id===p.id);
-    if(i>=0)PAPERS[i]=p;else PAPERS.push(p);
-  });
-  saveBank();
-  toast('合并导入完成：新增 '+add+' 题，更新 '+upd+' 题','ok');
-  goHome();
+  doMergeImport(items,PRE.papers||[],PRE.images||{});
 };
 ACTIONS['prev.overwrite']=()=>{
   qtConfirm({title:'覆盖导入',msg:'将清空当前题库，仅保留本次导入的题目。仍在新题库中的错题与收藏会保留，其余自动清理（作答统计不受影响）。确定覆盖？',okText:'覆盖',danger:true,onOk:()=>{

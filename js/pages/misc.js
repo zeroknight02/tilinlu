@@ -649,3 +649,109 @@ document.addEventListener('change',e=>{
     if(dx<0)ACTIONS['quiz.next']();else ACTIONS['quiz.prev']();
   },{passive:true});
 })();
+
+/* ================= 编辑题目（改错别字） ================= */
+/* 只改这一道：进来时把现有内容原样铺好，用户改哪格就动哪格，
+   其余字段（笔记、标记、配图、材料）一律保持不动 */
+let QE=null;
+PAGES.qEdit={title:'编辑题目'};
+PAGES.qEdit.render=function(el,params){
+  const q=bankQ(params.id);
+  if(!q){el.innerHTML=topbarHTML('编辑题目')+'<div class="card miss-empty">题目不存在</div>';return;}
+  if(!QE||QE.id!==q.id){
+    QE={id:q.id,d:{
+      module:q.module||'常识判断',subtype:q.subtype||'',type:q.type||'single',
+      q:q.q||'',o:(q.o||[]).slice(),a:(q.type==='multiple')?(q.a||[]).slice():q.a,
+      e:q.e||'',mat:q.mat||''
+    }};
+  }
+  const d=QE.d;
+  const optHTML=d.o.map((t,i)=>
+    '<div class="row" style="margin-top:6px"><span class="qe-lb">'+String.fromCharCode(65+i)+'</span>'
+    +'<input style="flex:1;min-width:0" data-qe="o'+i+'" value="'+esc(t)+'"></div>').join('');
+  let ansHTML='';
+  if(d.type==='single'||d.type==='judge'){
+    const opts=(d.type==='judge')?['正确','错误']:d.o.map((t,i)=>String.fromCharCode(65+i));
+    ansHTML='<div class="row" style="flex-wrap:wrap;gap:8px">'+opts.map((t,i)=>
+      '<label class="qe-ans'+(d.a===i?' on':'')+'"><input type="radio" name="qe-a" data-act="qe.ans" data-v="'+i+'"'+(d.a===i?' checked':'')+'>'+esc(t)+'</label>').join('')+'</div>';
+  }else if(d.type==='multiple'){
+    ansHTML='<div class="row" style="flex-wrap:wrap;gap:8px">'+d.o.map((t,i)=>
+      '<label class="qe-ans'+(Array.isArray(d.a)&&d.a.indexOf(i)>-1?' on':'')+'"><input type="checkbox" data-act="qe.ans" data-v="'+i+'"'+(Array.isArray(d.a)&&d.a.indexOf(i)>-1?' checked':'')+'>'+String.fromCharCode(65+i)+'</label>').join('')+'</div>';
+  }else if(d.type==='blank'){
+    ansHTML='<input data-qe="a" value="'+esc(Array.isArray(d.a)?d.a.join('/'):(d.a||''))+'" placeholder="多个答案用 / 分隔">';
+  }else{
+    ansHTML='<div class="file-note">主观题不用填答案</div>';
+  }
+  el.innerHTML=topbarHTML('编辑题目','只改你要改的地方')
+    +'<div class="card">'
+    +'<div class="grid2"><div><label class="fl">模块</label><select data-qe="module">'
+      +allModules().map(m=>'<option'+(m===d.module?' selected':'')+'>'+esc(m)+'</option>').join('')+'</select></div>'
+    +'<div><label class="fl">子类（可空）</label><input data-qe="subtype" value="'+esc(d.subtype)+'"></div></div>'
+    +'<label class="fl">题型</label><select data-qe="type">'
+      +['single','multiple','judge','blank','short'].map(t=>'<option value="'+t+'"'+(t===d.type?' selected':'')+'>'+TYPE_NAMES[t]+'</option>').join('')+'</select>'
+    +'<label class="fl">题干</label><textarea rows="6" data-qe="q">'+esc(d.q)+'</textarea>'
+    +'<label class="fl">选项</label>'+optHTML
+    +'<div class="row" style="margin-top:8px"><button class="btn btn-plain btn-sm" data-act="qe.addOpt">+ 加一个选项</button>'
+      +(d.o.length>2?'<button class="btn btn-ghost btn-sm" data-act="qe.delOpt">− 删最后一个</button>':'')+'</div>'
+    +'<label class="fl">正确答案</label>'+ansHTML
+    +'<label class="fl">解析</label><textarea rows="6" data-qe="e">'+esc(d.e)+'</textarea>'
+    +'<label class="fl">材料（资料分析等共用题干，可空）</label><textarea rows="3" data-qe="mat">'+esc(d.mat)+'</textarea>'
+    +'<div class="file-note">只改你要改的格子，其余内容不会动。笔记、颜色标记、配图都不受影响。</div>'
+    +'</div>'
+    +'<div class="botbar"><div class="botbar-in">'
+    +'<button class="btn btn-ghost" data-act="qe.cancel">取消</button>'
+    +'<button class="btn btn-primary btn-big" data-act="qe.save">保存修改</button>'
+    +'</div></div>';
+  /* 输入即写进工作副本，切换题型/加选项再渲染时不会丢 */
+  el.querySelectorAll('[data-qe]').forEach(inp=>{
+    const k=inp.dataset.qe;
+    inp.addEventListener('input',()=>{
+      if(k.indexOf('o')===0&&/^o\d+$/.test(k))QE.d.o[+k.slice(1)]=inp.value;
+      else QE.d[k]=inp.value;
+    });
+  });
+};
+ACTIONS['q.edit']=()=>{
+  const q=curQ();if(!q){toast('当前没有题目','warn');return;}
+  QE=null;closeModal();goTo('qEdit',{id:q.id});
+};
+ACTIONS['qe.ans']=(d)=>{
+  const v=parseInt(d.v,10);
+  if(QE.d.type==='multiple'){
+    const a=Array.isArray(QE.d.a)?QE.d.a.slice():[];
+    const i=a.indexOf(v);
+    if(i>-1)a.splice(i,1);else a.push(v);
+    QE.d.a=a.sort((x,y)=>x-y);
+  }else QE.d.a=v;
+  render();
+};
+ACTIONS['qe.addOpt']=()=>{
+  if(QE.d.o.length>=8){toast('最多 8 个选项','warn');return;}
+  QE.d.o.push('');render();
+};
+ACTIONS['qe.delOpt']=()=>{
+  if(QE.d.o.length<=2){toast('至少保留 2 个选项','warn');return;}
+  QE.d.o.pop();render();
+};
+ACTIONS['qe.cancel']=()=>{QE=null;goBack();};
+ACTIONS['qe.save']=()=>{
+  const q=bankQ(QE.id);if(!q){toast('题目不存在','err');return;}
+  const d=QE.d;
+  const nq={id:q.id,exam:q.exam,subject:q.subject,module:d.module,subtype:d.subtype,type:d.type,
+    q:String(d.q||'').trim(),o:d.o.map(x=>String(x||'').trim()),e:String(d.e||'').trim()};
+  if(d.type==='blank'){
+    const arr=String(d.a||'').split('/').map(x=>x.trim()).filter(Boolean);
+    nq.a=arr;
+  }else if(d.type==='short'){nq.a=null;}
+  else nq.a=d.a;
+  if(d.mat&&d.mat.trim())nq.mat=d.mat.trim();
+  const errs=validQuestion(nq);
+  if(errs.length){toast(errs[0],'err');return;}
+  /* 就地改字段，保住笔记/标记/配图等用户数据，也保住会话里对同一对象的引用 */
+  q.module=nq.module;q.subtype=nq.subtype;q.type=nq.type;q.q=nq.q;q.o=nq.o;q.a=nq.a;q.e=nq.e;
+  if(nq.mat)q.mat=nq.mat;else delete q.mat;
+  saveBank();
+  QE=null;
+  toast('已保存','ok');
+  goBack();
+};

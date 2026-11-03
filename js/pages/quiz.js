@@ -65,8 +65,16 @@ function blankOK(q,inputs){
 /* ---- 题目附加内容：材料 / 配图 / 笔记 ---- */
 function qExtrasHTML(q,hideNote){
   let h='';
-  if(q.mat)h+='<details class="mat-box"><summary>材料 · 点击展开</summary><div class="mat-body">'+esc(q.mat)+'</div></details>';
-  if(q.img)h+='<img class="q-img" src="'+q.img+'" alt="题图">';
+  if(q.mat||q.matImg){
+    h+='<details class="mat-box"><summary>材料 · 点击展开</summary><div class="mat-body">';
+    if(q.mat)h+=esc(q.mat);
+    if(q.matImg)h+='<img class="q-img" src="'+imgSrc(q.matImg)+'" alt="材料图" loading="lazy">';
+    h+='</div></details>';
+  }
+  const qimgs=(Array.isArray(q.imgs)&&q.imgs.length)?q.imgs:(q.img?[q.img]:[]);
+  /* 题干里已经用【图N】就地显示了，就不再在下面重复排一遍 */
+  const inlined=q.q&&q.q.indexOf('【图')>-1&&qimgs.length;
+  if(!inlined)qimgs.forEach(u=>{h+='<img class="q-img" src="'+imgSrc(u)+'" alt="题图" loading="lazy">';});
   if(q.note&&!hideNote)h+='<div class="q-note"><b>我的笔记</b>'+esc(q.note)+'</div>';
   return h;
 }
@@ -116,7 +124,7 @@ function quizQHTML(st){
     +'<button class="qc-focus" data-act="q.more" aria-label="题目操作">⋯</button>'
     +'<button class="qc-focus" data-act="prax.focus">'+(focusOn?'退出专注':'专注')+'</button></div>';
   h+='<div class="exam-meta">'+qChips(q)+(q.flag?'<span class="flag-dot flag-'+q.flag+'" title="已标记"></span>':'')+'</div>';
-  h+='<div class="card"><div class="q-text">'+esc(q.q)+'</div>'+qExtrasHTML(q);
+  h+='<div class="card"><div class="q-text">'+qTextHTML(q)+'</div>'+qExtrasHTML(q);
   if(q.type==='blank'){
     const bn=Math.max(1,blankAns(q).length);
     let bf='';
@@ -132,13 +140,13 @@ function quizQHTML(st){
       h+='<div id="quiz-verdict"></div>';
     }else{
       h+='<div class="multi-submit-bar">'+(st.essayOpen?'':'<button class="btn btn-ghost" data-act="quiz.essay">查看参考答案</button>')+'</div>';
-      if(st.essayOpen)h+='<div class="analysis" style="margin-top:10px"><span class="a-t">参考答案</span>'+esc(q.e||'暂无解析')+'</div>';
+      if(st.essayOpen)h+='<div class="analysis" style="margin-top:10px"><span class="a-t">参考答案</span>'+esc(q.e||'暂无解析')+eImgsHTML(q)+'</div>';
     }
   }else{
     h+='<div class="opts" id="quiz-opts">';
     optOrder(q).forEach((oi,disp)=>{
       h+='<div class="opt" data-act="quiz.pick" data-i="'+oi+'"><div class="opt-badge">'+letters()[disp]+'</div><div style="flex:1">'
-        +((q.oimg&&q.oimg[oi])?'<img class="opt-img" src="'+q.oimg[oi]+'" alt="">':'')+esc(q.o[oi])+'</div></div>';
+        +((q.oimg&&q.oimg[oi])?'<img class="opt-img" src="'+imgSrc(q.oimg[oi])+'" alt="">':'')+esc(q.o[oi])+'</div></div>';
     });
     h+='</div>';
     if(q.type==='multiple')h+='<div class="multi-submit-bar" id="quiz-submit"><button class="btn btn-primary" data-act="quiz.submit">提交答案</button><span class="muted" style="margin-left:10px">可多选，选完后提交</span></div>';
@@ -187,7 +195,7 @@ function quizJudge(q,userPick){
   });
   const v=$id('quiz-verdict');
   if(v)v.innerHTML='<div class="verdict '+(correct?'v-ok':'v-err')+'">'+(correct?'✓ 回答正确':'✗ 回答错误')+'</div>'
-    +'<div class="analysis" style="margin-top:8px"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+'</div>';
+    +'<div class="analysis" style="margin-top:8px"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+eImgsHTML(q)+'</div>';
   const sb=$id('quiz-submit');if(sb)sb.style.display='none';
   afterQuizJudge(q,correct,userPick);
 }
@@ -222,7 +230,7 @@ ACTIONS['quiz.subSubmit']=()=>{
   const v=$id('quiz-verdict');
   if(v)v.innerHTML='<div class="verdict '+(g.ok?'v-ok':'v-err')+'">'+(g.ok?'✓ 自动评阅：回答正确':'✗ 自动评阅：回答错误')+'</div>'
     +'<div class="muted" style="margin:4px 0">要点命中 '+g.matched+' / '+g.total+'（覆盖率 '+(g.total?pct:100)+'%，阈值 25%，仅供参考）</div>'
-    +'<div class="analysis" style="margin-top:8px"><span class="a-t">参考答案</span>'+esc(q.e||'暂无解析')+'</div>';
+    +'<div class="analysis" style="margin-top:8px"><span class="a-t">参考答案</span>'+esc(q.e||'暂无解析')+eImgsHTML(q)+'</div>';
   const sb=$id('quiz-sub-bar');if(sb)sb.style.display='none';
   afterQuizJudge(q,g.ok,text);
 };
@@ -259,6 +267,7 @@ ACTIONS['q.more']=()=>{
     +'<h3>题目操作</h3>'
     +'<div class="sheet-item" data-act="q.pickImg"><span>添加 / 更换配图</span><span class="muted">'+(q.img?'已有':'')+'</span></div>'
     +(q.img?'<div class="sheet-item" data-act="q.delImg"><span style="color:var(--err)">删除配图</span><span class="muted"></span></div>':'')
+    +'<div class="sheet-item" data-act="q.edit"><span>编辑题目（改错别字）</span><span class="muted"></span></div>'
     +'<div class="sheet-item" data-act="q.noteOpen"><span>写笔记</span><span class="muted">'+(q.note?'已有':'')+'</span></div>'
     +'<div class="sheet-item" data-act="q.matOpen"><span>编辑材料（共用题干）</span><span class="muted">'+(q.mat?'已有':'')+'</span></div>'
     +'<div class="sheet-item" style="display:block"><div style="margin-bottom:8px">颜色标记</div>'
@@ -550,7 +559,7 @@ PAGES.mistakeList.render=function(el,params){
       +'<div class="w-meta">上次答案：<b>'+esc(w.lastWrongAnswer||'未作答')+'</b> · 正确答案：<b style="color:var(--ok)">'+esc(isObjQ(q)?fmtAns(q,q.a):'见解析')+'</b>'
       +' · 连续答对 '+w.consecutiveCorrect+' / 3 · 累计答错 '+(w.wrongCount||1)+' 次</div>'
       +((w.tags&&w.tags.length)?'<div class="w-meta" style="margin-top:4px">'+w.tags.map(t=>'<span class="flag-btn on" style="padding:2px 8px;font-size:11px;margin-right:5px">'+esc(t)+'</span>').join('')+'</div>':'')
-      +'<div class="w-detail" style="display:none;margin-top:8px"><div class="analysis"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+'</div></div>'
+      +'<div class="w-detail" style="display:none;margin-top:8px"><div class="analysis"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+eImgsHTML(q)+'</div></div>'
       +'<div class="row" style="margin-top:10px">'
       +'<button class="btn-link" data-act="ml.expand" data-id="'+esc(w.questionId)+'">展开解析</button>'
       +'<button class="btn-link" data-act="ml.redo" data-id="'+esc(w.questionId)+'">重做本题</button>'
@@ -598,7 +607,7 @@ ACTIONS['ml.print']=()=>{
     const q=bankQ(w.questionId);if(!q)return;
     h+='<div class="pr-q"><b>'+(i+1)+'. '+esc(q.q)+'</b>';
     if(q.mat)h+='<div class="pr-o">材料：'+esc(q.mat)+'</div>';
-    if(q.img)h+='<div class="pr-o"><img src="'+q.img+'" style="max-width:60%;border:1px solid #ccc"></div>';
+    if(q.img)h+='<div class="pr-o"><img src="'+imgSrc(q.img)+'" style="max-width:60%;border:1px solid #ccc"></div>';
     if(q.o&&q.o.length)h+='<div class="pr-o">'+q.o.map((o,k)=>letters()[k]+'. '+esc(o)).join('<br>')+'</div>';
     h+='<div class="pr-a">正确答案：'+esc(isObjQ(q)?fmtAns(q,q.a):'见解析')+'　｜　我上次选：'+esc(w.lastWrongAnswer||'未作答')+'</div>';
     if(q.e)h+='<div class="pr-a">解析：'+esc(q.e)+'</div>';
@@ -648,7 +657,7 @@ PAGES.favs.render=function(el){
     rows+='<div class="card card-sm fav-row" id="fv-'+esc(q.id)+'">'
       +'<div class="exam-meta" style="margin:0 0 4px">'+qChips(q)+'</div>'
       +'<div class="w-q">'+esc(brief)+'</div>'
-      +'<div class="w-detail" style="display:none;margin-top:8px"><div class="analysis"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+'</div></div>'
+      +'<div class="w-detail" style="display:none;margin-top:8px"><div class="analysis"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+eImgsHTML(q)+'</div></div>'
       +'<div class="row" style="margin-top:10px;flex-wrap:wrap">'
       +'<button class="btn-link" data-act="fv.expand" data-id="'+esc(q.id)+'">展开解析</button>'
       +'<button class="btn-link" data-act="fv.redo" data-id="'+esc(q.id)+'">练习本题</button>'

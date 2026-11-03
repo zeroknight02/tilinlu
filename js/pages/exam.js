@@ -293,7 +293,7 @@ function examQHTML(){
   const ans=S.answers[q.id];
   let h='<div class="q-count">第 <b>'+(EX.idx+1)+'</b> / '+S.questionIds.length+' 题'+(S.type==='auto'?' · 当前模块：'+esc(q.module):'')+'</div>';
   h+='<div class="exam-meta">'+qChips(q)+'</div>';
-  h+='<div class="card"><div class="q-text">'+esc(q.q)+'</div>'+qExtrasHTML(q,true);
+  h+='<div class="card"><div class="q-text">'+qTextHTML(q)+'</div>'+qExtrasHTML(q,true);
   if(q.type==='blank'){
     const bn=Math.max(1,blankAns(q).length);
     const cur=Array.isArray(ans)?ans:[];
@@ -307,7 +307,7 @@ function examQHTML(){
     optOrder(q).forEach((oi,disp)=>{
       const picked=q.type==='multiple'?(Array.isArray(ans)&&ans.includes(oi)):(ans===oi);
       h+='<div class="opt'+(picked?' sel':'')+'" data-act="exam.pick" data-i="'+oi+'"><div class="opt-badge">'+letters()[disp]+'</div><div style="flex:1">'
-        +((q.oimg&&q.oimg[oi])?'<img class="opt-img" src="'+q.oimg[oi]+'" alt="">':'')+esc(q.o[oi])+'</div></div>';
+        +((q.oimg&&q.oimg[oi])?'<img class="opt-img" src="'+imgSrc(q.oimg[oi])+'" alt="">':'')+esc(q.o[oi])+'</div></div>';
     });
     h+='</div>';
   }

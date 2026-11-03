@@ -115,6 +115,7 @@ if(window.visualViewport){
 /* 把全部本地数据重新读进内存。启动与「导入备份」共用，
    少读一项，下次保存就会用默认空值覆盖掉用户数据。 */
 function loadAllData(){
+  loadImgTab();
   loadCustExams();loadExamOverride();loadScoreOverride();loadExtraMods();
   loadBank();loadStats();loadWrong();loadFav();loadRecs();loadBooks();
   loadLearn();loadSrs();

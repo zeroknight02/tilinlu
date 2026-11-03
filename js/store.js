@@ -234,8 +234,8 @@ const CLOUD_DEFAULT='https://cdn.jsdelivr.net/gh/你的用户名/题库仓库@ma
 const DEMO_IDS={'q-001':1,'q-002':1,'q-003':1,'q-004':1,'q-005':1,'q-006':1,'q-007':1,'q-008':1,'q-009':1,'q-010':1,'q-011':1,'q-012':1,'q-013':1,'q-014':1,'q-015':1,'q-016':1};
 
 /* ================= 版本 ================= */
-const APP_VER='v2.0.2';
-const APP_BUILD=38;
+const APP_VER='v2.2.1';
+const APP_BUILD=41;
 const APP_DATE='2026-11-02';
 /* 正式版已启用（2026-11-02）：
    任何「更新时自动清理本地数据」的逻辑都会被强制跳过，
@@ -247,7 +247,7 @@ const K={bank:'qt_questions',bankTime:'qt_bank_time',
   stats:'qt_stats',wrong:'qt_wrong',plan:'qt_daily_plan',ai:'qt_ai',
   fav:'qt_fav',recs:'qt_records',pshuffle:'qt_prax_shuffle',
   extraMods:'qt_extra_modules',tcPass:'qt_tc_pass',autoPass:'qt_auto_pass',
-  cloudUrl:'qt_cloud_url',cloudTime:'qt_cloud_time',cloudCache:'qt_cloud_cache',theme:'qt_theme',books:'qt_books',customExams:'qt_custom_exams',demoPurged:'qt_demo_purged',snapshot:'qt_snapshot',learn:'qt_learn',fontSize:'qt_font_size',optShuffle:'qt_opt_shuffle',srs:'qt_srs',studyCat:'qt_study_cat',bankRescue:'qt_bank_rescue',build:'qt_build',filter:'qt_filter',examMods:'qt_exam_modules',scoreOv:'qt_score_override'};
+  cloudUrl:'qt_cloud_url',cloudTime:'qt_cloud_time',cloudCache:'qt_cloud_cache',theme:'qt_theme',books:'qt_books',customExams:'qt_custom_exams',demoPurged:'qt_demo_purged',snapshot:'qt_snapshot',learn:'qt_learn',fontSize:'qt_font_size',optShuffle:'qt_opt_shuffle',srs:'qt_srs',studyCat:'qt_study_cat',bankRescue:'qt_bank_rescue',imgtab:'qt_imgtab',build:'qt_build',filter:'qt_filter',examMods:'qt_exam_modules',scoreOv:'qt_score_override'};
 const progKey=m=>'qt_progress_'+m;
 /* ---- 存储：IndexedDB 落盘，内存镜像保证同步读写 ---- */
 const DB_NAME='tilinlu',DB_STORE='kv',DB_VER=1;
@@ -453,6 +453,9 @@ function normQuestion(raw,idx){
   q.note=String(q.note==null?'':q.note).trim();
   q.mat=String(q.mat==null?'':q.mat).trim();
   if(typeof q.img!=='string')q.img='';
+  if(typeof q.matImg!=='string')q.matImg='';
+  if(!Array.isArray(q.eimgs))q.eimgs=[];
+  if(!Array.isArray(q.imgs))q.imgs=[];
   if(!Array.isArray(q.oimg))q.oimg=[];
   return q;
 }
@@ -496,7 +499,9 @@ function snapshotData(tag){
   try{
     const data={};
     lsKeys().forEach(k=>{
-      if(k===K.snapshot||k===K.build||k===K.ai)return;
+      /* 图片表是导入数据派生的，且可能有几十 MB：不进快照，避免每次更新把存储翻倍。
+         真要恢复，重新导入题库 JSON 即可（题目 id 不变，图片会补齐）。 */
+      if(k===K.snapshot||k===K.build||k===K.ai||k===K.imgtab)return;
       data[k]=lsGet(k);
     });
     let str=JSON.stringify({tag:tag,at:Date.now(),data:data});
@@ -611,6 +616,14 @@ function loadPlan(){return lsJson(K.plan,{});}
 
 /* ---- 错题本 ---- */
 let WRONG=[];
+/* 真题的公式图体积小但数量多，导入时用「图片表 + @键」去重：
+   表里每张图只存一份，题目里存 @键，渲染时再换成 data URI */
+let IMG_TAB={};
+function loadImgTab(){
+  IMG_TAB=lsJson(K.imgtab,{});
+  if(!IMG_TAB||typeof IMG_TAB!=='object'||Array.isArray(IMG_TAB))IMG_TAB={};
+}
+function saveImgTab(){lsSet(K.imgtab,JSON.stringify(IMG_TAB));}
 function loadWrong(){
   WRONG=lsJson(K.wrong,[]);
   if(!Array.isArray(WRONG))WRONG=[];
