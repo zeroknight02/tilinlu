@@ -198,6 +198,11 @@ function quizJudge(q,userPick){
     +'<div class="analysis" style="margin-top:8px"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+eImgsHTML(q)+'</div>';
   const sb=$id('quiz-submit');if(sb)sb.style.display='none';
   afterQuizJudge(q,correct,userPick);
+  /* 答到最后一题，给个收尾入口，不要只弹「已是最后一题」 */
+  if(st===PS&&PS.idx>=PS.qs.length-1&&v){
+    v.insertAdjacentHTML('beforeend','<div class="multi-submit-bar" style="margin-top:10px">'
+      +'<button class="btn btn-primary" data-act="quiz.summary">查看本轮总结</button></div>');
+  }
 }
 function afterQuizJudge(q,correct,userAns){
   recordAnswer(q,correct);
@@ -206,6 +211,7 @@ function afterQuizJudge(q,correct,userAns){
   if(page==='practice'){
     if(PS.mode==='all'&&!PS.shuf)saveProgress(PS.m,PS.idx+1,PS.qs.length);
     PS.wrongCount=wrongCountOf(PS.m);
+    PS.answered++;if(correct)PS.right++;else PS.wrong++;
     const wc=$id('quiz-wc');if(wc)wc.innerHTML='错题 <b>'+PS.wrongCount+'</b> 题';
   }else if(page==='mistakePractice'){
     /* 从搜索结果进来的练习只判对错，不动错题本的"连对移出"状态 */
@@ -238,13 +244,47 @@ ACTIONS['quiz.next']=()=>{
   const page=curPage().page;
   if(page==='practice'){
     if(!PS)return;
-    if(PS.idx>=PS.qs.length-1){toast('已是最后一题');return;}
+    if(PS.idx>=PS.qs.length-1){ACTIONS['quiz.summary']();return;}
     PS.idx++;PS.locked=false;PS.sel=new Set();PS.essayOpen=false;
     const b=$id('quiz-body');if(b)b.innerHTML=quizQHTML(PS);
     updateFavBtn();
   }else if(page==='mistakePractice'){mpNext();}
 };
 
+/* 本轮总结：只统计这次打开后做的题，不是整组题数 */
+ACTIONS['quiz.summary']=()=>{
+  if(!PS)return;
+  const n=PS.answered,ok=PS.right,bad=PS.wrong;
+  const pct=n?Math.round(ok*100/n):0;
+  const sec=Math.max(0,Math.round((Date.now()-(PS.startAt||Date.now()))/1000));
+  const mm=Math.floor(sec/60),ss=sec%60;
+  const left=PS.qs.length-PS.idx-1;
+  $id('modal-root').innerHTML='<div class="mask" data-act="modal.mask"><div class="modal" data-stop="1">'
+    +'<h3>本轮总结</h3>'
+    +(n?('<div class="rp-hero" style="margin:4px 0 10px">'
+      +'<div class="rp-cell"><b>'+n+'</b><span>本轮作答</span></div>'
+      +'<div class="rp-cell"><b style="color:var(--ok)">'+ok+'</b><span>答对</span></div>'
+      +'<div class="rp-cell"><b style="color:var(--err)">'+bad+'</b><span>答错</span></div>'
+      +'</div>'
+      +'<div class="file-note">正确率 <b>'+pct+'%</b> · 用时 '+(mm?mm+' 分 ':'')+ss+' 秒'
+      +(left>0?(' · 还剩 '+left+' 题未做'):'')+'</div>')
+      :'<div class="file-note">这一轮还没作答，先做几道再看总结。</div>')
+    +'<div class="m-btns" style="flex-wrap:wrap">'
+    +'<button class="btn btn-plain" data-act="modal.cancel">继续做</button>'
+    +(bad>0?'<button class="btn btn-ghost" data-act="quiz.goWrong">看错题</button>':'')
+    +'<button class="btn btn-primary" data-act="quiz.again">再来一轮</button>'
+    +'</div></div></div>';
+  modalOpen=true;
+};
+ACTIONS['quiz.goWrong']=()=>{closeModal();goTo('mistakeCats');};
+ACTIONS['quiz.again']=()=>{
+  closeModal();
+  if(!PS)return;
+  PS.idx=0;PS.locked=false;PS.sel=new Set();PS.essayOpen=false;PS.blank={};
+  PS.right=0;PS.wrong=0;PS.answered=0;PS.startAt=Date.now();PS.summed=false;
+  const b=$id('quiz-body');if(b)b.innerHTML=quizQHTML(PS);
+  updateFavBtn();toast('已重新开始','ok');
+};
 ACTIONS['quiz.blankSubmit']=()=>{
   const st=quizState();if(!st||st.locked)return;
   const q=st.qs[st.idx];if(!q)return;
@@ -268,6 +308,7 @@ ACTIONS['q.more']=()=>{
     +'<div class="sheet-item" data-act="q.pickImg"><span>添加 / 更换配图</span><span class="muted">'+(q.img?'已有':'')+'</span></div>'
     +(q.img?'<div class="sheet-item" data-act="q.delImg"><span style="color:var(--err)">删除配图</span><span class="muted"></span></div>':'')
     +'<div class="sheet-item" data-act="q.edit"><span>编辑题目（改错别字）</span><span class="muted"></span></div>'
+    +'<div class="sheet-item" data-act="q.addTopic"><span>加入专题</span><span class="muted"></span></div>'
     +'<div class="sheet-item" data-act="q.noteOpen"><span>写笔记</span><span class="muted">'+(q.note?'已有':'')+'</span></div>'
     +'<div class="sheet-item" data-act="q.matOpen"><span>编辑材料（共用题干）</span><span class="muted">'+(q.mat?'已有':'')+'</span></div>'
     +'<div class="sheet-item" style="display:block"><div style="margin-bottom:8px">颜色标记</div>'
@@ -378,7 +419,7 @@ PAGES.practice={title:'自由刷题'};
 PAGES.practice.render=function(el,params){
   const m=params.module||'';
   const mode0=params.mode||'all';
-  if(mode0!=='review'&&allModules().indexOf(m)<0){
+  if(mode0!=='review'&&mode0!=='topic'&&allModules().indexOf(m)<0){
     el.innerHTML=topbarHTML('自由刷题')+'<div class="card miss-empty">模块不存在</div>';return;
   }
   const mode=params.mode||'all';
@@ -387,9 +428,14 @@ PAGES.practice.render=function(el,params){
   if(mode==='review'){qs=srsDue().map(id=>bankQ(id)).filter(Boolean);idx=0;}
   else if(mode==='wrong'){qs=shuffle(wrongQsOf(m));idx=0;}
   else if(mode==='fav'){qs=shuffle(favQsOf(m));idx=0;}
+  else if(mode==='topic'){
+    const tp=topicById(params.topicId);
+    qs=(tp?tp.ids:[]).map(id=>bankQ(id)).filter(Boolean);
+    idx=0;
+  }
   else{qs=bankOf(m);if(shuf){qs=shuffle(qs);idx=0;}else{idx=getProg(m);if(idx>=qs.length)idx=0;}}
   if(!qs.length){
-    const tip=mode==='review'?'今天没有到期的复习题目，明天再来看看':(mode==='fav'?'该模块暂无收藏题目：在刷题、错题本或详情页点「☆ 收藏本题」即可加入':(mode==='wrong'?'该模块暂无错题':'该模块暂无题目，可先导入题库'));
+    const tip=mode==='review'?'今天没有到期的复习题目，明天再来看看':(mode==='topic'?'这个专题还没有题目：刷题时点右上角「⋯ → 加入专题」收录':(mode==='fav'?'该模块暂无收藏题目：在刷题、错题本或详情页点「☆ 收藏本题」即可加入':(mode==='wrong'?'该模块暂无错题':'该模块暂无题目，可先导入题库')));
     el.innerHTML=topbarHTML(mode==='review'?'间隔复习':m,'自由刷题')+'<div class="card miss-empty">'+esc(tip)+'</div>'
       +'<div class="botbar"><div class="botbar-in">'
       +'<button class="btn btn-plain btn-sm" data-act="prax.wrongOnly">'+(mode==='all'?'只看错题':(mode==='wrong'?'只看收藏':'全部题目'))+'</button>'
@@ -398,11 +444,12 @@ PAGES.practice.render=function(el,params){
       +'</div></div>';
     return;
   }
-  PS={m,mode,qs,idx,shuf,locked:false,sel:new Set(),essayOpen:false,blank:{},wrongCount:wrongCountOf(m)};
+  PS={m,mode,qs,idx,shuf,locked:false,sel:new Set(),essayOpen:false,blank:{},wrongCount:wrongCountOf(m),
+      startAt:Date.now(),right:0,wrong:0,answered:0,summed:false};
   /* 复习队列是固定的一组到期题，没有「模块」可切换，所以不显示模式/顺序按钮 */
-  const toolsHTML=mode==='review'
+  const toolsHTML=(mode==='review'||mode==='topic')
     ?'<div class="qb-tools">'
-      +'<span class="muted" style="font-size:12px">今日待复习 '+qs.length+' 题</span>'
+      +'<span class="muted" style="font-size:12px">'+(mode==='review'?'今日待复习 '+qs.length+' 题':'专题 · '+qs.length+' 题')+'</span>'
       +'<button class="btn btn-ghost btn-sm" id="quiz-fav" data-act="quiz.fav">'+(PS.qs[PS.idx]&&isFav(PS.qs[PS.idx].id)?'★ 已收藏':'☆ 收藏本题')+'</button>'
       +'<button class="btn btn-plain btn-sm" data-act="prax.card">答题卡</button>'
       +'</div>'
@@ -412,7 +459,7 @@ PAGES.practice.render=function(el,params){
       +'<button class="btn btn-ghost btn-sm" id="quiz-fav" data-act="quiz.fav">'+(PS.qs[PS.idx]&&isFav(PS.qs[PS.idx].id)?'★ 已收藏':'☆ 收藏本题')+'</button>'
       +'<button class="btn btn-plain btn-sm" data-act="prax.card">答题卡</button>'
       +'</div>';
-  el.innerHTML=topbarHTML(mode==='review'?'间隔复习':m, mode==='review'?('待复习 '+qs.length+' 题'):'自由刷题')
+  el.innerHTML=topbarHTML(mode==='review'?'间隔复习':m, mode==='review'?('待复习 '+qs.length+' 题'):(mode==='topic'?('专题 '+qs.length+' 题'):'自由刷题'))
     +'<div id="quiz-body">'+quizQHTML(PS)+'</div>'
     +'<div class="botbar"><div class="botbar-in botbar-stack">'
     +toolsHTML

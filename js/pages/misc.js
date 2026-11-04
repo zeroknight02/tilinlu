@@ -138,6 +138,9 @@ PAGES.about.render=function(el){
     +'<div class="row" style="margin-top:10px">'
     +'<button class="btn btn-ghost btn-sm" data-act="backup.export">导出备份</button>'
     +'<button class="btn btn-ghost btn-sm" data-act="backup.importPick">导入备份</button></div></div>'
+    +'<div class="card"><b style="font-size:15px">意见反馈</b>'
+    +'<div class="about-hint">题灵录是本地单机应用，没有服务器收反馈。遇到问题请点下面复制诊断信息，连同截图一起发给开发者。</div>'
+    +'<div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" data-act="about.diag">复制诊断信息</button></div></div>'
     +'<div class="card"><b style="font-size:15px">阅读与答题</b>'
     +'<div class="st-row"><span class="st-k">正文字号</span><span class="st-v"><span class="fs-seg">'
     +['sm','md','lg'].map((v,i)=>'<button class="fs-b'+(FONT_SIZE===v?' on':'')+'" data-act="set.font" data-v="'+v+'">'+['小','中','大'][i]+'</button>').join('')
@@ -303,16 +306,12 @@ function initCloudSync(){
 PAGES.report={title:'学习报告'};
 PAGES.report.render=function(el){
   const t=totalsStat(),streak=answerStreak();
-  const days=[],map={};
+  const days=[];
   for(let i=6;i>=0;i--){
     const d=new Date(Date.now()-i*86400000);
-    const o={k:learnKey(d),n:0,label:d.getDate()};
-    days.push(o);map[o.k]=o;
+    const k=dayStr(d);
+    days.push({k:k,n:dayStat(k).n,label:d.getDate()});
   }
-  Object.keys(STATS.ans).forEach(id=>{
-    const a=STATS.ans[id];if(!a||!a.t)return;
-    const k=learnKey(new Date(a.t));if(map[k])map[k].n++;
-  });
   const maxN=Math.max(1,days[0].n,days[1].n,days[2].n,days[3].n,days[4].n,days[5].n,days[6].n);
   const bars=days.map((x,i)=>'<div class="rp-day"><i style="height:'+Math.max(3,Math.round(x.n*100/maxN))+'%" title="'+x.k+'　'+x.n+' 题"></i><span>'+(i===6?'今':x.label)+'</span></div>').join('');
   const mod={};
@@ -329,17 +328,23 @@ PAGES.report.render=function(el){
   const rowHTML=rows.map(r=>'<div class="rp-row"><span class="rp-m">'+esc(r.m)+'</span>'
     +'<span class="rp-bar"><i style="width:'+r.acc+'%"></i></span>'
     +'<span class="rp-acc">'+r.acc+'%</span></div>').join('');
-  const cnt={};
-  Object.keys(STATS.ans).forEach(id=>{
-    const a=STATS.ans[id];if(!a||!a.t)return;
-    const k=learnKey(new Date(a.t));cnt[k]=(cnt[k]||0)+1;
-  });
-  const hm=[];const now2=new Date();
-  for(let i=29;i>=0;i--){
-    const d=new Date(now2.getTime()-i*86400000),k=learnKey(d),n=cnt[k]||0;
-    const lv=n===0?0:(n<10?1:(n<30?2:3));
-    hm.push('<i class="l'+lv+'" title="'+k+'　'+n+' 题"></i>');
+  /* 近 12 周打卡：周一起算，7 行 × 12 列 */
+  const hm=[];const now2=new Date();now2.setHours(0,0,0,0);
+  const mon=new Date(now2);mon.setDate(mon.getDate()-((mon.getDay()+6)%7));
+  const start=new Date(mon);start.setDate(start.getDate()-77);
+  for(let w=0;w<12;w++){
+    for(let dd=0;dd<7;dd++){
+      const d=new Date(start);d.setDate(d.getDate()+w*7+dd);
+      const k=dayStr(d);
+      if(d>now2){hm.push('<i style="opacity:0"></i>');continue;}
+      const n=dayStat(k).n;
+      const lv=n===0?0:(n<10?1:(n<30?2:(n<60?3:4)));
+      hm.push('<i class="l'+lv+'" title="'+k+'　'+n+' 题"></i>');
+    }
   }
+  /* 本周任务 */
+  const wc=weekCount(),wg=weekGoal();
+  const wkPct=wg>0?Math.min(100,Math.round(wc*100/wg)):0;
   const weak=rows.filter(r=>r.obj>=5).slice(0,3);
   const tip=weak.length?('最需要补：'+weak.map(r=>esc(r.m)+'（'+r.acc+'%，'+r.obj+' 题）').join('、')):'多刷一些题，报告会更有参考价值。';
   el.innerHTML=topbarHTML('学习报告')
@@ -348,16 +353,234 @@ PAGES.report.render=function(el){
     +'<div class="rp-cell"><b>'+t.acc+'</b><span>总正确率</span></div>'
     +'<div class="rp-cell"><b>'+streak+'</b><span>连续天数</span></div>'
     +'</div>'
+    +'<div class="card" data-act="report.weekGoal" style="cursor:pointer">'
+    +'<div class="row"><b style="font-size:15px;flex:1">本周任务</b>'
+    +'<span class="muted">'+(wg>0?(wc+' / '+wg+' 题'):'点击设置目标')+'</span></div>'
+    +(wg>0?('<div class="wk-bar"><i style="width:'+wkPct+'%"></i></div>'
+      +'<div class="file-note">'+(wc>=wg?'已完成本周目标，继续保持':'还差 '+(wg-wc)+' 题')+'</div>')
+      :'<div class="file-note">设一个每周题量，坚持比冲量更重要。</div>')
+    +'</div>'
     +'<div class="card"><b style="font-size:15px">近 7 天做题量</b>'
     +'<div class="rp-days">'+bars+'</div></div>'
-    +'<div class="card"><b style="font-size:15px">近 30 天</b>'
-    +'<div class="hm">'+hm.join('')+'</div>'
-    +'<div class="hm-legend">少<b style="opacity:.10"></b><b style="opacity:.32"></b><b style="opacity:.6"></b><b style="opacity:.92"></b>多</div></div>'
+    +'<div class="card"><b style="font-size:15px">近 12 周打卡</b>'
+    +'<div class="hm-week">'+hm.join('')+'</div>'
+    +'<div class="hm-legend">少<b style="opacity:.10"></b><b style="opacity:.32"></b><b style="opacity:.58"></b><b style="opacity:.78"></b><b style="opacity:.95"></b>多</div></div>'
     +'<div class="card"><b style="font-size:15px">各模块正确率</b>'
     +(rowHTML||'<div class="muted" style="margin-top:8px">还没有作答记录</div>')
-    +'<div class="rp-tip">'+tip+'</div></div>';
+    +'<div class="rp-tip">'+tip+'</div></div>'
+    +'<div class="card"><div class="row"><b style="font-size:15px;flex:1">AI 学习顾问</b>'
+    +'<button class="btn btn-ghost btn-sm" data-act="report.ai">'+(AI_ADVICE?'重新分析':'开始分析')+'</button></div>'
+    +(AI_ADVICE?('<div class="ai-advice">'+esc(AI_ADVICE)+'</div>'):'<div class="file-note">把你真实的做题数据交给 AI，给一份评估 + 薄弱环节 + 下一步建议。</div>')
+    +'<div class="ai-status" id="adv-status"></div></div>';
+};
+/* ================= 自定义专题 ================= */
+PAGES.topics={title:'专题'};
+PAGES.topics.render=function(el){
+  let list='';
+  TOPICS.forEach(t=>{
+    const qs=t.ids.map(id=>bankQ(id)).filter(Boolean);
+    let c=0,w=0;
+    qs.forEach(q=>{const a=STATS.ans[q.id];if(a){if(a.c===1)c++;else if(a.c===0)w++;}});
+    const acc=(c+w)?(Math.round(c*100/(c+w))+'%'):'—';
+    list+='<div class="card card-sm"><div class="row" style="align-items:flex-start">'
+      +'<div style="flex:1;min-width:0;cursor:pointer" data-act="topic.start" data-id="'+t.id+'">'
+      +'<div class="m-name">'+esc(t.name)+'</div>'
+      +'<div class="m-nums">共 <b>'+qs.length+'</b> 题 · 已做 <b>'+(c+w)+'</b> · 正确率 <b>'+acc+'</b></div></div>'
+      +'<button class="qc-focus" data-act="topic.menu" data-id="'+t.id+'" aria-label="专题操作">⋯</button></div></div>';
+  });
+  el.innerHTML=topbarHTML('专题')
+    +'<div class="muted" style="margin:2px 4px 10px">把相关的题收进一个专题（比如「2025年1月时政」），之后按专题集中刷。刷题时点右上角「⋯ → 加入专题」即可收录。</div>'
+    +(list||'<div class="card miss-empty">还没有专题<br><span class="muted">点下面的按钮新建一个</span></div>')
+    +'<button class="btn btn-primary" style="width:100%;margin-top:12px" data-act="topic.new">新建专题</button>';
+};
+ACTIONS['topic.new']=()=>{
+  $id('modal-root').innerHTML='<div class="mask" data-act="modal.mask"><div class="modal" data-stop="1">'
+    +'<h3>新建专题</h3>'
+    +'<input id="tp-name" maxlength="24" placeholder="如：2025年1月时政">'
+    +'<div class="m-btns"><button class="btn btn-plain" data-act="modal.cancel">取消</button>'
+    +'<button class="btn btn-primary" data-act="topic.create">创建</button></div></div></div>';
+  modalOpen=true;
+  setTimeout(function(){const i=$id('tp-name');if(i)i.focus();},60);
+};
+ACTIONS['topic.create']=()=>{
+  const i=$id('tp-name');
+  const name=String((i&&i.value)||'').trim();
+  if(!name){toast('给专题起个名字','warn');return;}
+  if(TOPICS.some(t=>t.name===name)){toast('已有同名专题','warn');return;}
+  TOPICS.push({id:'t'+Date.now().toString(36),name:name,at:Date.now(),ids:[]});
+  saveTopics();closeModal();render();toast('专题已创建','ok');
+};
+ACTIONS['topic.start']=d=>{
+  const t=topicById(d.id);if(!t)return;
+  if(!t.ids.length){toast('这个专题还没有题目，刷题时点「⋯ → 加入专题」收录','warn');return;}
+  goTo('practice',{module:t.name,mode:'topic',topicId:t.id});
+};
+ACTIONS['topic.menu']=d=>{
+  const t=topicById(d.id);if(!t)return;
+  $id('modal-root').innerHTML='<div class="mask" data-act="modal.mask"><div class="modal" data-stop="1">'
+    +'<h3>'+esc(t.name)+'</h3>'
+    +'<div class="sheet-item" data-act="topic.start" data-id="'+t.id+'"><span>开始练习</span><span class="muted">'+t.ids.length+' 题</span></div>'
+    +'<div class="sheet-item" data-act="topic.renameOpen" data-id="'+t.id+'"><span>重命名</span><span class="muted"></span></div>'
+    +'<div class="sheet-item" data-act="topic.del" data-id="'+t.id+'"><span style="color:var(--err)">删除专题</span><span class="muted"></span></div>'
+    +'<div class="m-btns"><button class="btn btn-plain" data-act="modal.cancel">关闭</button></div></div></div>';
+  modalOpen=true;
+};
+ACTIONS['topic.renameOpen']=d=>{
+  const t=topicById(d.id);if(!t)return;
+  $id('modal-root').innerHTML='<div class="mask" data-act="modal.mask"><div class="modal" data-stop="1">'
+    +'<h3>重命名专题</h3>'
+    +'<input id="tp-name2" maxlength="24" value="'+esc(t.name)+'">'
+    +'<div class="m-btns"><button class="btn btn-plain" data-act="modal.cancel">取消</button>'
+    +'<button class="btn btn-primary" data-act="topic.rename" data-id="'+t.id+'">保存</button></div></div></div>';
+  modalOpen=true;
+};
+ACTIONS['topic.rename']=d=>{
+  const t=topicById(d.id);if(!t)return;
+  const i=$id('tp-name2');
+  const name=String((i&&i.value)||'').trim();
+  if(!name){toast('名字不能为空','warn');return;}
+  t.name=name;saveTopics();closeModal();render();toast('已重命名','ok');
+};
+ACTIONS['topic.del']=d=>{
+  const t=topicById(d.id);if(!t)return;
+  closeModal();
+  qtConfirm({title:'删除专题',msg:'删除「'+t.name+'」？只删这个专题，题目本身不会从题库删除。',okText:'删除',
+    onOk:()=>{TOPICS=TOPICS.filter(x=>x.id!==t.id);saveTopics();render();toast('已删除','ok');}});
+};
+/* 从刷题页把当前题加入专题 */
+ACTIONS['q.addTopic']=()=>{
+  const q=curQ();if(!q){toast('当前没有题目','warn');return;}
+  const list=TOPICS.length?TOPICS.map(t=>{
+    const has=t.ids.indexOf(q.id)>-1;
+    return '<div class="sheet-item" data-act="q.addTopicTo" data-id="'+t.id+'"><span>'+esc(t.name)+'</span>'
+      +'<span class="muted">'+(has?'已在其中':(t.ids.length+' 题'))+'</span></div>';
+  }).join(''):'<div class="file-note" style="padding:10px 0">还没有专题，在下面输入名字新建一个。</div>';
+  $id('modal-root').innerHTML='<div class="mask" data-act="modal.mask"><div class="modal" data-stop="1">'
+    +'<h3>加入专题</h3>'+list
+    +'<div class="row" style="margin-top:10px"><input id="tp-quick" maxlength="24" placeholder="新建专题并加入" style="flex:1;min-width:0">'
+    +'<button class="btn btn-primary btn-sm" data-act="q.addTopicNew">新建</button></div>'
+    +'<div class="m-btns"><button class="btn btn-plain" data-act="modal.cancel">关闭</button></div></div></div>';
+  modalOpen=true;
+};
+ACTIONS['q.addTopicTo']=d=>{
+  const q=curQ();const t=topicById(d.id);if(!q||!t)return;
+  if(t.ids.indexOf(q.id)>-1){toast('这道题已经在这个专题里了','warn');closeModal();return;}
+  t.ids.push(q.id);saveTopics();closeModal();toast('已加入「'+t.name+'」','ok');
+};
+ACTIONS['q.addTopicNew']=()=>{
+  const q=curQ();
+  const i=$id('tp-quick');
+  const name=String((i&&i.value)||'').trim();
+  if(!name){toast('给专题起个名字','warn');return;}
+  let t=TOPICS.filter(x=>x.name===name)[0];
+  if(!t){t={id:'t'+Date.now().toString(36),name:name,at:Date.now(),ids:[]};TOPICS.push(t);}
+  if(q&&t.ids.indexOf(q.id)<0)t.ids.push(q.id);
+  saveTopics();closeModal();toast('已加入「'+name+'」','ok');
+};
+/* ---- 意见反馈：复制诊断信息 ---- */
+function diagText(){
+  const t=totalsStat();
+  let store='未知';
+  try{store=JSON.stringify({q:BANK.length,p:PAPERS.length}).length+' 字节(题库)';}catch(e){}
+  const d=new Date();
+  return '题灵录 反馈信息\n'
+    +'版本：'+APP_VER+'（构建 '+APP_BUILD+'）\n'
+    +'缓存：qt-shell-v'+APP_BUILD+'\n'
+    +'题库：'+BANK.length+' 题 / 套卷 '+PAPERS.length+' 个 / 错题 '+WRONG.length+' / 收藏 '+FAV.length+'\n'
+    +'累计做题：'+t.done+' 题，正确率 '+t.acc+'，连续 '+answerStreak()+' 天，本周 '+weekCount()+' 题\n'
+    +'记录：'+RECS.length+' 次练习，'+store+'\n'
+    +'屏幕：'+window.screen.width+'×'+window.screen.height+'，视口 '+window.innerWidth+'×'+window.innerHeight+'\n'
+    +'浏览器：'+(navigator.userAgent||'').slice(0,160)+'\n'
+    +'独立窗口：'+(window.navigator.standalone?'是':'否')+'\n'
+    +'时间：'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+    +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+async function copyText(t){
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(t);return true;}}catch(e){}
+  try{
+    const ta=document.createElement('textarea');ta.value=t;
+    ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(ta);ta.focus();ta.select();
+    const ok=document.execCommand('copy');document.body.removeChild(ta);return ok;
+  }catch(e){return false;}
+}
+ACTIONS['about.diag']=async()=>{
+  const txt=diagText();
+  const ok=await copyText(txt);
+  if(ok){toast('诊断信息已复制，粘贴发给开发者即可','ok');return;}
+  /* 剪贴板被拦（iOS 偶发）：弹出来让用户长按手动复制 */
+  $id('modal-root').innerHTML='<div class="mask" data-act="modal.mask"><div class="modal" data-stop="1">'
+    +'<h3>手动复制</h3><div class="file-note" style="margin-bottom:8px">长按下面的文字，全选后复制。</div>'
+    +'<textarea rows="9" readonly style="font-size:12px">'+esc(txt)+'</textarea>'
+    +'<div class="m-btns"><button class="btn btn-primary" data-act="modal.cancel">知道了</button></div>'
+    +'</div></div>';
+  modalOpen=true;
+};
+/* ---- AI 学习顾问 ---- */
+let AI_ADVICE='';
+function advicePrompt(){
+  const t=totalsStat();
+  const mods={};
+  Object.keys(STATS.ans).forEach(id=>{
+    const a=STATS.ans[id];if(!a)return;
+    const m=a.m||'未分类';
+    if(!mods[m])mods[m]={n:0,c:0,w:0};
+    mods[m].n++;if(a.c===1)mods[m].c++;else if(a.c===0)mods[m].w++;
+  });
+  const lines=Object.keys(mods).map(m=>{
+    const o=mods[m],obj=o.c+o.w;
+    return '  · '+m+'：做 '+o.n+' 题'+(obj?('，正确率 '+Math.round(o.c*100/obj)+'%（'+obj+' 题有对错）'):'');
+  }).join('\n');
+  const wk=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date(Date.now()-i*86400000),k=dayStr(d);
+    wk.push(k.slice(5)+' '+dayStat(k).n+' 题');
+  }
+  return '你是一名公务员考试（行测）学习顾问。下面是这位考生的真实做题数据，请据此给出建议。\n'
+    +'【总览】累计做题 '+t.done+' 题，总正确率 '+t.acc+'，连续做题 '+answerStreak()+' 天，本周 '+weekCount()+' 题，错题本 '+WRONG.length+' 题，收藏 '+FAV.length+' 题。\n'
+    +'【各模块】\n'+(lines||'  （暂无）')+'\n'
+    +'【近 7 天】'+wk.join('；')+'\n\n'
+    +'请用中文输出三段，每段 2-3 句，不要客套话、不要分点编号：\n'
+    +'1. 总体评估：目前处于什么水平、复习节奏怎么样\n'
+    +'2. 薄弱环节：哪几个模块最该补，为什么\n'
+    +'3. 下一步：未来两周具体做什么（给可执行的建议，不要泛泛而谈）';
+}
+ACTIONS['report.ai']=async()=>{
+  const cfg=qdAiCfg();
+  if(!cfg){toast('请先在「导入题库 → AI 解析」里配置 API 地址 / 模型 / Key','warn');return;}
+  const st=$id('adv-status');
+  const set=x=>{if(st)st.textContent=x;};
+  set('AI 正在分析你的做题数据…（最多 60 秒）');
+  const ab=new AbortController();const to=setTimeout(()=>ab.abort(),60000);
+  try{
+    const out=await aiChatFetch(cfg,advicePrompt(),ab.signal);
+    clearTimeout(to);
+    AI_ADVICE=String(out||'').trim().slice(0,2000);
+    render();
+  }catch(e){
+    clearTimeout(to);
+    set((e&&e.name==='AbortError')?'分析超时（60 秒），可以再试一次。':'分析失败：'+(e&&e.message?e.message:'未知错误'));
+  }
 };
 
+ACTIONS['report.weekGoal']=()=>{
+  const cur=weekGoal();
+  $id('modal-root').innerHTML='<div class="mask" data-act="modal.mask"><div class="modal" data-stop="1">'
+    +'<h3>本周目标</h3>'
+    +'<div class="file-note" style="margin:0 0 10px">本周一到现在已完成 <b>'+weekCount()+'</b> 题</div>'
+    +'<input id="wk-goal-in" type="number" min="0" max="5000" inputmode="numeric" value="'+(cur||'')+'" placeholder="如 300（留空=不设目标）">'
+    +'<div class="m-btns"><button class="btn btn-plain" data-act="modal.cancel">取消</button>'
+    +'<button class="btn btn-primary" data-act="report.weekGoalSave">保存</button></div>'
+    +'</div></div>';
+  modalOpen=true;
+  setTimeout(function(){const i=$id('wk-goal-in');if(i){i.focus();i.select();}},60);
+};
+ACTIONS['report.weekGoalSave']=()=>{
+  const i=$id('wk-goal-in');
+  const n=Math.max(0,Math.min(5000,parseInt((i&&i.value)||'0',10)||0));
+  setWeekGoal(n);closeModal();render();
+  toast(n>0?('本周目标已设为 '+n+' 题'):'已取消本周目标','ok');
+};
 /* ================= 题库搜索 ================= */
 PAGES.search={title:'搜索题库'};
 PAGES.search.render=function(el,params){

@@ -234,8 +234,8 @@ const CLOUD_DEFAULT='https://cdn.jsdelivr.net/gh/你的用户名/题库仓库@ma
 const DEMO_IDS={'q-001':1,'q-002':1,'q-003':1,'q-004':1,'q-005':1,'q-006':1,'q-007':1,'q-008':1,'q-009':1,'q-010':1,'q-011':1,'q-012':1,'q-013':1,'q-014':1,'q-015':1,'q-016':1};
 
 /* ================= 版本 ================= */
-const APP_VER='v2.2.1';
-const APP_BUILD=41;
+const APP_VER='v2.3.0';
+const APP_BUILD=42;
 const APP_DATE='2026-11-02';
 /* 正式版已启用（2026-11-02）：
    任何「更新时自动清理本地数据」的逻辑都会被强制跳过，
@@ -247,7 +247,7 @@ const K={bank:'qt_questions',bankTime:'qt_bank_time',
   stats:'qt_stats',wrong:'qt_wrong',plan:'qt_daily_plan',ai:'qt_ai',
   fav:'qt_fav',recs:'qt_records',pshuffle:'qt_prax_shuffle',
   extraMods:'qt_extra_modules',tcPass:'qt_tc_pass',autoPass:'qt_auto_pass',
-  cloudUrl:'qt_cloud_url',cloudTime:'qt_cloud_time',cloudCache:'qt_cloud_cache',theme:'qt_theme',books:'qt_books',customExams:'qt_custom_exams',demoPurged:'qt_demo_purged',snapshot:'qt_snapshot',learn:'qt_learn',fontSize:'qt_font_size',optShuffle:'qt_opt_shuffle',srs:'qt_srs',studyCat:'qt_study_cat',bankRescue:'qt_bank_rescue',imgtab:'qt_imgtab',build:'qt_build',filter:'qt_filter',examMods:'qt_exam_modules',scoreOv:'qt_score_override'};
+  cloudUrl:'qt_cloud_url',cloudTime:'qt_cloud_time',cloudCache:'qt_cloud_cache',theme:'qt_theme',books:'qt_books',customExams:'qt_custom_exams',demoPurged:'qt_demo_purged',snapshot:'qt_snapshot',learn:'qt_learn',fontSize:'qt_font_size',optShuffle:'qt_opt_shuffle',srs:'qt_srs',weekGoal:'qt_week_goal',topics:'qt_topics',studyCat:'qt_study_cat',bankRescue:'qt_bank_rescue',imgtab:'qt_imgtab',build:'qt_build',filter:'qt_filter',examMods:'qt_exam_modules',scoreOv:'qt_score_override'};
 const progKey=m=>'qt_progress_'+m;
 /* ---- 存储：IndexedDB 落盘，内存镜像保证同步读写 ---- */
 const DB_NAME='tilinlu',DB_STORE='kv',DB_VER=1;
@@ -564,7 +564,26 @@ function agoText(){
 
 /* ---- 统计 ---- */
 let STATS={ans:{}};
-function loadStats(){STATS=lsJson(K.stats,{ans:{}});if(!STATS.ans)STATS.ans={};}
+/* 日期键：YYYY-MM-DD（本地时区） */
+function dayStr(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function loadStats(){
+  STATS=lsJson(K.stats,{ans:{}});
+  if(!STATS.ans)STATS.ans={};
+  if(!STATS.day||typeof STATS.day!=='object'||Array.isArray(STATS.day))STATS.day={};
+  if(!STATS.hist||typeof STATS.hist!=='object'||Array.isArray(STATS.hist))STATS.hist={};
+  /* 老版本没有按天统计：用现有作答记录回填一次。
+     只能还原到「那天做过哪些题」，同一题多次作答的历史拿不回来。 */
+  if(!STATS.dayFilled){
+    Object.keys(STATS.ans).forEach(id=>{
+      const r=STATS.ans[id];if(!r||!r.t)return;
+      const k=dayStr(new Date(r.t));
+      const o=STATS.day[k]||(STATS.day[k]={n:0,c:0});
+      o.n++;if(r.c===1)o.c++;
+    });
+    STATS.dayFilled=1;
+    saveStats();
+  }
+}
 function saveStats(){lsSet(K.stats,JSON.stringify(STATS));}
 /* ================= 间隔重复（简化 SM-2） ================= */
 const SRS_STEPS=[1,2,4,7,15,30,60,120];
@@ -600,9 +619,33 @@ function srsDue(){
 }
 function recordAnswer(q,correct){
   srsUpdate(q,correct);
-  STATS.ans[q.id]={m:q.module,c:(correct===true?1:(correct===false?0:null)),t:Date.now()};
+  const now=Date.now();
+  STATS.ans[q.id]={m:q.module,c:(correct===true?1:(correct===false?0:null)),t:now};
+  /* 按天统计（热力图 / 本周任务用） */
+  const k=dayStr(new Date(now));
+  const o=STATS.day[k]||(STATS.day[k]={n:0,c:0});
+  o.n++;if(correct===true)o.c++;
+  /* 单题作答历史：每题只留最近 20 次，避免存储膨胀 */
+  const h=STATS.hist[q.id]||(STATS.hist[q.id]=[]);
+  h.push({t:now,c:(correct===true?1:(correct===false?0:null))});
+  if(h.length>20)h.splice(0,h.length-20);
   saveStats();
 }
+/* ---- 本周（周一起算）---- */
+function weekStartStr(){
+  const d=new Date();d.setHours(0,0,0,0);
+  d.setDate(d.getDate()-((d.getDay()+6)%7));
+  return dayStr(d);
+}
+function weekCount(){
+  const s=weekStartStr();let n=0;
+  Object.keys(STATS.day||{}).forEach(k=>{if(k>=s)n+=(STATS.day[k].n||0);});
+  return n;
+}
+function weekGoal(){return parseInt(lsGet(K.weekGoal)||'0',10)||0;}
+function setWeekGoal(n){lsSet(K.weekGoal,String(n||0));}
+function qHistory(id){return (STATS.hist&&STATS.hist[id])||[];}
+function dayStat(k){return (STATS.day&&STATS.day[k])||{n:0,c:0};}
 function totalsStat(){
   let done=0,right=0,wrong=0;
   Object.keys(STATS.ans).forEach(id=>{const r=STATS.ans[id];done++;if(r.c===1)right++;else if(r.c===0)wrong++;});
@@ -613,6 +656,15 @@ function moduleDoneCount(m){let n=0;Object.keys(STATS.ans).forEach(id=>{if(STATS
 function todayDoneOf(m){const td=todayStr();let n=0;Object.keys(STATS.ans).forEach(id=>{const r=STATS.ans[id];
   const d=new Date(r.t);if(r.m===m&&d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')===td)n++;});return n;}
 function loadPlan(){return lsJson(K.plan,{});}
+
+/* ---- 自定义专题（时政专题等）---- */
+let TOPICS=[];
+function loadTopics(){
+  const d=lsJson(K.topics,[]);
+  TOPICS=Array.isArray(d)?d.filter(t=>t&&t.id&&t.name&&Array.isArray(t.ids)):[];
+}
+function saveTopics(){lsSet(K.topics,JSON.stringify(TOPICS));}
+function topicById(id){for(let i=0;i<TOPICS.length;i++)if(TOPICS[i].id===id)return TOPICS[i];return null;}
 
 /* ---- 错题本 ---- */
 let WRONG=[];

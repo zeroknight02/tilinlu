@@ -39,14 +39,16 @@ PAGES.questionDetail.render=function(el,params){
     h+='<div class="card"><div class="q-text">'+qTextHTML(q)+'</div>'+qExtrasHTML(q);
     if(q.o.length){
       h+='<div class="opts" style="margin-top:12px">';
-      q.o.forEach((t,i)=>{
+      /* 用 optOrder 保持和刷题/考试页一致的顺序，否则开了「选项打乱」后对不上 */
+      optOrder(q).forEach((i,disp)=>{
+        const t=q.o[i];
         const inAns=Array.isArray(q.a)?q.a.includes(i):(q.a===i);
         const picked=q.type==='multiple'?(Array.isArray(ans)&&ans.includes(i)):(ans===i);
         let cls='',mine='';
         if(picked&&inAns){cls='ok';mine='<span class="tag-mine">我的选择</span>';}
         else if(picked){cls='err';mine='<span class="tag-mine">我的选择</span>';}
         else if(inAns)cls='ans-outline';
-        h+='<div class="opt static '+cls+'"><div class="opt-badge">'+letters()[i]+'</div><div style="flex:1">'+esc(t)+'</div>'+mine+'</div>';
+        h+='<div class="opt static '+cls+'"><div class="opt-badge">'+letters()[disp]+'</div><div style="flex:1">'+esc(t)+'</div>'+mine+'</div>';
       });
       h+='</div>';
     }
@@ -57,6 +59,20 @@ PAGES.questionDetail.render=function(el,params){
       +'<div class="detail-ans-line">我选的答案：<b class="'+myCls+'">'+esc(myAns)+'</b></div>'
       +'<div class="detail-ans-line">正确答案：<b class="da-ok">'+esc(isObjQ(q)?fmtAns(q,q.a):'见解析')+'</b></div>'
       +'<div class="detail-ans-line">本题分值：<b>'+qPoints(q,S.exam,S.level)+' 分</b></div></div>';
+    /* 作答记录：这题做过几次、每次对错 */
+    const hist=qHistory(q.id);
+    if(hist.length){
+      const items=hist.slice(-10).reverse().map(x=>{
+        const d=new Date(x.t);
+        const k=(d.getMonth()+1)+'-'+String(d.getDate()).padStart(2,'0')
+          +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+        const cls=x.c===1?'h-ok':(x.c===0?'h-err':'h-na');
+        return '<span class="hist-item '+cls+'">'+k+' '+(x.c===1?'✓':(x.c===0?'✗':'—'))+'</span>';
+      }).join('');
+      h+='<div class="card card-sm"><div class="row"><b style="flex:1;font-size:14px">作答记录</b>'
+        +'<span class="muted">共 '+hist.length+' 次</span></div>'
+        +'<div class="hist-wrap">'+items+'</div></div>';
+    }
     h+='<div class="analysis"><span class="a-t">解析</span>'+esc(q.e||'暂无解析')+eImgsHTML(q)+'</div>';
     if(q.aiChat)h+='<div class="analysis" style="margin-top:8px"><span class="a-t">AI 追问记录</span>'+esc(q.aiChat)+'</div>';
     h+='<div class="card card-sm" style="margin-top:10px">'

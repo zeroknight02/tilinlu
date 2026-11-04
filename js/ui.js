@@ -80,6 +80,9 @@ const DUO_ICONS={
  library:{
   f:'<rect x="3.7" y="5.2" width="4.5" height="15" rx="1.5"/><rect x="9.75" y="3.4" width="4.5" height="16.8" rx="1.5"/><rect x="15.8" y="6.6" width="4.5" height="13.6" rx="1.5"/>',
   l:'<rect x="3.7" y="5.2" width="4.5" height="15" rx="1.5"/><rect x="9.75" y="3.4" width="4.5" height="16.8" rx="1.5"/><rect x="15.8" y="6.6" width="4.5" height="13.6" rx="1.5"/>'},
+ tag:{
+  f:'<path d="M4.4 6.1h8.9l5.8 5.9-5.8 5.9H4.4z"/>',
+  l:'<path d="M4.4 6.1h8.9l5.8 5.9-5.8 5.9H4.4z"/><circle cx="8.3" cy="12" r="1.35"/>'},
  learn:{
   f:'<rect x="4.2" y="5.6" width="15.6" height="14.4" rx="3.2"/>',
   l:'<rect x="4.2" y="5.6" width="15.6" height="14.4" rx="3.2"/><path d="M8.4 3.4v3.4M15.6 3.4v3.4"/><path d="m8.9 13.2 2.3 2.3 4-4.2"/>'}

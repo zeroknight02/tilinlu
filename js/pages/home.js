@@ -5,6 +5,7 @@ PAGES.home.render=function(el){
   const t=totalsStat();
   const streak=answerStreak();
   const todayTotal=allModules().reduce((a,m)=>a+todayDoneOf(m),0);
+  const wc=weekCount(),wg=weekGoal();
   const _d=new Date();
   const dateStr=_d.getFullYear()+'年'+(_d.getMonth()+1)+'月'+_d.getDate()+'日 · 周'+'日一二三四五六'[_d.getDay()];
   const feats=[
@@ -14,6 +15,7 @@ PAGES.home.render=function(el){
     {page:'paperList',name:'真题训练',desc:'整卷限时作答',ico:'doc',g:['#60a5fa','#2563eb']},
     {page:'mistakeCats',name:'错题本',desc:'错题重刷 · 连对移出',ico:'pencil',g:['#f87171','#dc2626']},
     {page:'favs',name:'收藏夹',desc:'星标重点 · 集中重练',ico:'star',g:['#fbbf24','#f59e0b']},
+    {page:'topics',name:'专题',desc:'时政专题 · 自建集合',ico:'tag',g:['#a78bfa','#7c3aed']},
     {page:'studyList',name:'教材梳理',desc:'导入教材 · 章节学习',ico:'library',g:['#94a3b8','#475569']},
     {page:'dailyLearn',name:'每日学习',desc:'单词 · 成语 · 诗词打卡',ico:'learn',g:['#22d3ee','#0891b2']}
   ];
@@ -25,7 +27,8 @@ PAGES.home.render=function(el){
     ? '<div class="hero">'
       +'<div class="hero-kicker">本地题库 · '+esc(agoText())+'</div>'
       +'<div class="hero-num">'+BANK.length+'<span>道</span></div>'
-      +'<div class="hero-sub">今日已完成 '+todayTotal+' 题 · 错题 '+WRONG.length+' 道</div>'
+      +'<div class="hero-sub">今日已完成 '+todayTotal+' 题 · 错题 '+WRONG.length+' 道'
+      +(wg>0?(' · 本周 '+wc+'/'+wg):'')+'</div>'
       +'<button class="hero-btn" data-act="go" data-page="modules">开始刷题</button>'
       +'<span class="hero-mark">题</span></div>'
     : '<div class="hero-empty">'

@@ -116,6 +116,7 @@ if(window.visualViewport){
    少读一项，下次保存就会用默认空值覆盖掉用户数据。 */
 function loadAllData(){
   loadImgTab();
+  loadTopics();
   loadCustExams();loadExamOverride();loadScoreOverride();loadExtraMods();
   loadBank();loadStats();loadWrong();loadFav();loadRecs();loadBooks();
   loadLearn();loadSrs();
