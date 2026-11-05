@@ -158,11 +158,12 @@ function scoreRows(exam){
         if(r.jt[s]!=null)push('jt:'+s,'判断推理 · '+s);
       });
       if(r.jt['_default']!=null)push('obj:判断推理','判断推理 · 其他子类');
-    }else if(m==='申论'||m==='综应'){
+    }else if((m==='申论'||m==='综应')&&r.subj&&Object.keys(r.subj).length){
       const sm=r.subj||{};
       Object.keys(sm).forEach(k=>{push('subj:'+k,m+' · '+k);});
     }else{
-      if((r.obj||{})[m]!=null)push('obj:'+m,m);
+      /* 自定义类别（高考等）没有内置默认分值，也要给一行让用户自己填 */
+      push('obj:'+m,m);
     }
   });
   return rows;
@@ -177,6 +178,8 @@ function qPoints(q,exam,level){
     }else{
       if(q.subtype&&ov['subj:'+q.subtype]!=null)return ov['subj:'+q.subtype];
       if(ov['subj:大作文']!=null)return ov['subj:大作文'];
+      /* 自定义类别按科目统一给分（分值页只列了科目名） */
+      if(ov['obj:'+q.module]!=null)return ov['obj:'+q.module];
     }
   }
   const r=SCORE_RULES[exam];
@@ -234,8 +237,8 @@ const CLOUD_DEFAULT='https://cdn.jsdelivr.net/gh/你的用户名/题库仓库@ma
 const DEMO_IDS={'q-001':1,'q-002':1,'q-003':1,'q-004':1,'q-005':1,'q-006':1,'q-007':1,'q-008':1,'q-009':1,'q-010':1,'q-011':1,'q-012':1,'q-013':1,'q-014':1,'q-015':1,'q-016':1};
 
 /* ================= 版本 ================= */
-const APP_VER='v2.3.0';
-const APP_BUILD=42;
+const APP_VER='v2.3.2';
+const APP_BUILD=44;
 const APP_DATE='2026-11-02';
 /* 正式版已启用（2026-11-02）：
    任何「更新时自动清理本地数据」的逻辑都会被强制跳过，
@@ -247,7 +250,7 @@ const K={bank:'qt_questions',bankTime:'qt_bank_time',
   stats:'qt_stats',wrong:'qt_wrong',plan:'qt_daily_plan',ai:'qt_ai',
   fav:'qt_fav',recs:'qt_records',pshuffle:'qt_prax_shuffle',
   extraMods:'qt_extra_modules',tcPass:'qt_tc_pass',autoPass:'qt_auto_pass',
-  cloudUrl:'qt_cloud_url',cloudTime:'qt_cloud_time',cloudCache:'qt_cloud_cache',theme:'qt_theme',books:'qt_books',customExams:'qt_custom_exams',demoPurged:'qt_demo_purged',snapshot:'qt_snapshot',learn:'qt_learn',fontSize:'qt_font_size',optShuffle:'qt_opt_shuffle',srs:'qt_srs',weekGoal:'qt_week_goal',topics:'qt_topics',studyCat:'qt_study_cat',bankRescue:'qt_bank_rescue',imgtab:'qt_imgtab',build:'qt_build',filter:'qt_filter',examMods:'qt_exam_modules',scoreOv:'qt_score_override'};
+  cloudUrl:'qt_cloud_url',cloudTime:'qt_cloud_time',cloudCache:'qt_cloud_cache',theme:'qt_theme',books:'qt_books',customExams:'qt_custom_exams',demoPurged:'qt_demo_purged',snapshot:'qt_snapshot',learn:'qt_learn',fontSize:'qt_font_size',optShuffle:'qt_opt_shuffle',srs:'qt_srs',weekGoal:'qt_week_goal',topics:'qt_topics',studyCats:'qt_study_cats',studyCat:'qt_study_cat',bankRescue:'qt_bank_rescue',imgtab:'qt_imgtab',build:'qt_build',filter:'qt_filter',examMods:'qt_exam_modules',scoreOv:'qt_score_override'};
 const progKey=m=>'qt_progress_'+m;
 /* ---- 存储：IndexedDB 落盘，内存镜像保证同步读写 ---- */
 const DB_NAME='tilinlu',DB_STORE='kv',DB_VER=1;

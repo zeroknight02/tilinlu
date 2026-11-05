@@ -8,7 +8,20 @@ function loadBooks(){
   BOOKS.forEach(b=>{if(!b.cat)b.cat='国考';if(!b.module)b.module=studyModulesFor(b.cat)[0];});
 }
 function saveBooks(){lsSet(K.books,JSON.stringify(BOOKS));}
-function allStudyCats(){const arr=STUDY_CATS_BASE.slice();CUST_EXAMS.forEach(e=>{if(arr.indexOf(e.name)<0)arr.push(e.name);});BOOKS.forEach(b=>{if(b.cat&&arr.indexOf(b.cat)<0)arr.push(b.cat);});return arr;}
+/* 用户自己新增的学习类别（中考、考研、教资……） */
+let STUDY_CATS_EXTRA=[];
+function loadStudyCatsExtra(){
+  const d=lsJson(K.studyCats,[]);
+  STUDY_CATS_EXTRA=Array.isArray(d)?d.filter(x=>typeof x==='string'&&x.trim()):[];
+}
+function saveStudyCatsExtra(){lsSet(K.studyCats,JSON.stringify(STUDY_CATS_EXTRA));}
+function allStudyCats(){
+  const arr=STUDY_CATS_BASE.slice();
+  STUDY_CATS_EXTRA.forEach(c=>{if(arr.indexOf(c)<0)arr.push(c);});
+  CUST_EXAMS.forEach(e=>{if(arr.indexOf(e.name)<0)arr.push(e.name);});
+  BOOKS.forEach(b=>{if(b.cat&&arr.indexOf(b.cat)<0)arr.push(b.cat);});
+  return arr;
+}
 function isPredefCat(cat){return cat==='国考'||cat==='省考'||/^事业单位/.test(cat);}
 function studyModulesFor(cat){
   if(cat==='国考'||cat==='省考')return GT_MODS.concat(['申论']);
@@ -96,12 +109,35 @@ PAGES.studyList.render=function(el){
   el.innerHTML=topbarHTML('教材梳理')
     +'<div class="card"><label class="fl">学习类别（考试 / 学段）</label>'
     +'<select data-chg="study.cat">'+cats.map(c=>'<option'+(c===STUDY.cat?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select>'
-    +'<div class="file-note">选择类别后显示对应模块；初中、高中、大学、计算机二级、软考等教材均可导入，科目在导入时填写。</div></div>'
+    +'<div class="row" style="margin-top:8px"><input id="new-study-cat" maxlength="12" placeholder="新增类别，如：中考、考研" style="flex:1;min-width:0">'
+    +'<button class="btn btn-primary btn-sm" data-act="study.catAdd">添加</button></div>'
+    +'<div class="file-note">选择类别后显示对应模块；初中、高中、大学、计算机二级、软考等教材均可导入，科目在导入时填写。</div>'
+    +(STUDY_CATS_EXTRA.length?('<div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">'
+      +STUDY_CATS_EXTRA.map(c=>'<span class="chip" style="cursor:pointer;background:var(--primary-soft);color:var(--primary)" data-act="study.catDel" data-n="'+esc(c)+'">'+esc(c)+' ×</span>').join('')
+      +'</div><div class="file-note">点类别名可删除（该类别下还有教材时不能删）。</div>'):'')
+    +'</div>'
     +'<div class="row" style="margin:6px 4px 10px"><button class="btn btn-primary btn-sm" data-act="bk.import">导入教材</button>'
     +'<span class="muted">'+(isPredefCat(STUDY.cat)?esc(STUDY.cat)+' · '+mods.length+' 个模块':'自由科目 · 随导入自动出现')+'</span></div>'
     +cards;
 };
 CHANGES['study.cat']=(d,t)=>{STUDY.cat=t.value;lsSet(K.studyCat,t.value);render();};
+ACTIONS['study.catAdd']=()=>{
+  const i=$id('new-study-cat');
+  const name=String((i&&i.value)||'').trim();
+  if(!name){toast('请输入类别名称','warn');return;}
+  if(name.length>12){toast('名称最多 12 个字','warn');return;}
+  if(allStudyCats().includes(name)){toast('该类别已存在','warn');return;}
+  STUDY_CATS_EXTRA.push(name);saveStudyCatsExtra();
+  STUDY.cat=name;lsSet(K.studyCat,name);
+  render();toast('已添加：'+name,'ok');
+};
+ACTIONS['study.catDel']=d=>{
+  const name=d.n;
+  if(BOOKS.some(b=>b.cat===name)){toast('该类别下还有教材，请先删除教材','warn');return;}
+  STUDY_CATS_EXTRA=STUDY_CATS_EXTRA.filter(x=>x!==name);saveStudyCatsExtra();
+  if(STUDY.cat===name){STUDY.cat=STUDY_CATS_BASE[0];lsSet(K.studyCat,STUDY.cat);}
+  render();toast('已删除','ok');
+};
 ACTIONS['smod.enter']=d=>{
   const m=d.m;
   if(!BOOKS.some(b=>b.cat===STUDY.cat&&b.module===m)){toast('该模块暂无教材，可先导入','warn');return;}
@@ -128,6 +164,7 @@ ACTIONS['bk.del']=d=>{
 };
 let BKIMP={cat:'',module:'',title:'',note:'',draft:'',file:null,fileStatus:''};
 PAGES.studyImport={title:'导入教材'};
+const STUDY_JSON_SAMPLE='{\n  "title": "行测判断推理 · 知识点手册",\n  "cat": "国考",\n  "module": "判断推理",\n  "note": "基础知识梳理",\n  "sections": [\n    {"t": "第一节 图形推理", "c": "常见规律：数量类、位置类、样式类……"},\n    {"t": "第二节 定义判断", "c": "先看提问方式，再抓定义要点……"}\n  ]\n}';
 PAGES.studyImport.render=function(el){
   const mode=deviceMode();
   if(!BKIMP.cat)BKIMP.cat=STUDY.cat||'国考';
@@ -147,10 +184,19 @@ PAGES.studyImport.render=function(el){
     +'<label class="fl">说明（可选）</label><input data-bkimp="note" value="'+esc(BKIMP.note)+'" placeholder="如：基础知识梳理">'
     +'<label class="fl">教材内容（纯文本）</label>'
     +'<textarea rows="12" data-bkimp="draft" placeholder="支持“第X章 / 第X节”“一、”“1.”“【考点】”“# 标题”等章节写法，保存时自动拆分为学习小节">'+esc(BKIMP.draft)+'</textarea>'
-    +(mode==='desktop'?'<div class="row" style="margin-top:10px;flex-wrap:nowrap"><input type="file" accept=".docx,.pdf" data-chg="bkimp.file" style="flex:1;min-width:0"><div></div></div>'
-      +'<div class="row" style="margin-top:8px"><button class="btn btn-plain btn-sm" data-act="bkimp.word">解析 Word(.docx)</button>'
-      +'<button class="btn btn-plain btn-sm" data-act="bkimp.pdf">解析 PDF</button>'
-      +'<span class="file-note" id="file-status">'+esc(BKIMP.fileStatus||'')+'</span></div>':'')
+    +'<label class="fl">或导入 JSON 教材（可一次导入多本）</label>'
+    +'<input type="file" accept=".json,application/json" data-chg="bkimp.json">'
+    +'<div class="file-note" id="json-status"></div>'
+    +'<details style="margin-top:6px"><summary class="muted" style="cursor:pointer;font-size:12.5px">查看 JSON 格式</summary>'
+    +'<pre style="font-size:11px;line-height:1.6;background:var(--line);padding:10px;border-radius:10px;overflow:auto;white-space:pre-wrap;margin-top:6px">'+esc(STUDY_JSON_SAMPLE)+'</pre>'
+    +'<div class="file-note">cat / module 不填就用上面选的；没写 sections 但写了 content，会按章节自动拆分；最外层是数组则一次导入多本。同名同模块的教材会自动跳过。</div>'
+    +'</details>'
+    +'<label class="fl">或从文件读取</label>'
+    +'<input type="file" accept=".txt,.md,.markdown,.docx,.pdf" data-chg="bkimp.file">'
+    +(mode==='desktop'?'<div class="row" style="margin-top:8px"><button class="btn btn-plain btn-sm" data-act="bkimp.word">解析 Word(.docx)</button>'
+      +'<button class="btn btn-plain btn-sm" data-act="bkimp.pdf">解析 PDF</button></div>':'')
+    +'<div class="file-note" id="file-status">'+esc(BKIMP.fileStatus||'')+'</div>'
+    +'<div class="file-note">.txt / .md 选中后会直接读入上面的文本框（手机也能用）；.docx / .pdf 需在电脑上解析。</div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" data-act="bkimp.save">保存并开始学习</button>'
     +'<div class="file-note">保存后自动进入对应模块的学习页；全部在本地处理。</div>'
     +'</div>';
@@ -161,10 +207,84 @@ document.addEventListener('input',e=>{
   const t=e.target.closest('[data-bkimp]');
   if(t)BKIMP[t.dataset.bkimp]=t.value;
 });
-CHANGES['bkimp.file']=(d,t)=>{
-  BKIMP.file=(t.files&&t.files[0])||null;
-  BKIMP.fileStatus=BKIMP.file?('已选择：'+BKIMP.file.name):'';
+CHANGES['bkimp.file']=async(d,t)=>{
+  const f=(t.files&&t.files[0])||null;
+  BKIMP.file=f;
+  BKIMP.fileStatus=f?('已选择：'+f.name):'';
   const st=$id('file-status');if(st)st.textContent=BKIMP.fileStatus;
+  if(!f)return;
+  /* .txt / .md 直接读进文本框，手机也能用 */
+  if(/\.(txt|md|markdown)$/i.test(f.name)){
+    try{
+      const txt=f.text?await f.text():await new Promise((res,rej)=>{
+        const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('读取失败'));r.readAsText(f);
+      });
+      BKIMP.draft=txt;
+      const ta=document.querySelector('textarea[data-bkimp=draft]');
+      if(ta)ta.value=txt;
+      if(!BKIMP.title){
+        BKIMP.title=f.name.replace(/\.[^.]+$/,'');
+        const ti=document.querySelector('input[data-bkimp=title]');
+        if(ti)ti.value=BKIMP.title;
+      }
+      const n=parseStudySections(txt).length;
+      BKIMP.fileStatus='已读入 '+f.name+'（识别到 '+n+' 节）';
+      if(st)st.textContent=BKIMP.fileStatus;
+      toast('已读入文本，检查后点「保存并开始学习」','ok');
+    }catch(e){toast((e&&e.message)||'读取失败','err');}
+    return;
+  }
+  /* 手机上没法解析 Word / PDF，给个明确提示 */
+  if(/\.(docx|pdf|doc)$/i.test(f.name)&&deviceMode()!=='desktop'){
+    BKIMP.fileStatus='手机端不支持解析 '+f.name.split('.').pop().toUpperCase()+'，请在电脑上操作，或把内容粘贴到上面的文本框';
+    if(st)st.textContent=BKIMP.fileStatus;
+  }
+};
+/* ---- 教材：导入 JSON ---- */
+CHANGES['bkimp.json']=async(d,t)=>{
+  const f=t.files&&t.files[0];if(!f)return;
+  const st=$id('json-status');
+  const say=x=>{if(st)st.textContent=x;};
+  say('正在解析…');
+  try{
+    const data=await readJsonFile(f);
+    const list=Array.isArray(data)?data:[data];
+    const defCat=BKIMP.cat||'国考';
+    let add=0,skip=0,bad=0,lastId=null,lastTitle='';
+    list.forEach(b=>{
+      const title=String((b&&(b.title||b.name))||'').trim();
+      if(!title){bad++;return;}
+      const cat=String((b&&b.cat)||defCat);
+      const mod=String((b&&(b.module||b.subject))||BKIMP.module||'').trim();
+      if(!mod){bad++;return;}
+      let secs=Array.isArray(b.sections)
+        ? b.sections.filter(x=>x&&x.t).map(x=>({t:String(x.t).slice(0,80),c:String(x.c||'')}))
+        : [];
+      if(!secs.length&&b.content)secs=parseStudySections(String(b.content));
+      if(!secs.length){bad++;return;}
+      if(BOOKS.some(x=>x.cat===cat&&x.module===mod&&x.title===title)){skip++;return;}
+      const id='bk-'+simpleHash(cat+'|'+mod+'|'+title)+Date.now().toString(36).slice(-4);
+      BOOKS.push({id:id,title:title,note:String(b.note||'').trim(),cat:cat,module:mod,addedAt:Date.now(),sections:secs});
+      lastId=id;lastTitle=title;add++;
+    });
+    const extra=[];
+    if(skip)extra.push('跳过 '+skip+' 本重复');
+    if(bad)extra.push(bad+' 本格式不对');
+    if(add){
+      saveBooks();
+      STUDY.cat=defCat;lsSet(K.studyCat,defCat);
+      toast('已导入 '+add+' 本教材'+(extra.length?('，'+extra.join('，')):''),'ok');
+      if(add===1&&lastId){goTo('study',{bookId:lastId});return;}
+      say('已导入 '+add+' 本');
+      render();return;
+    }
+    say('');
+    toast('没有新增'+(extra.length?('：'+extra.join('，')):''),'warn');
+  }catch(e){
+    say('');
+    toast((e&&e.message)||'导入失败','err');
+  }
+  t.value='';
 };
 ACTIONS['bkimp.word']=async()=>{
   const st=$id('file-status');

@@ -40,6 +40,14 @@ window.addEventListener('popstate',()=>{
 });
 
 /* ================= UI 工具 ================= */
+/* 读取本地 JSON 文件（iOS 上 file.text() 可用，老环境退回 FileReader） */
+async function readJsonFile(file){
+  const txt=file.text?await file.text():await new Promise((res,rej)=>{
+    const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(file);
+  });
+  try{return JSON.parse(txt);}
+  catch(e){throw new Error('不是合法的 JSON 文件'+(e&&e.message?('：'+e.message):''));}
+}
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 /* 只保留实际用到的线性图标；首页宫格用的是下面的 DUO_ICONS */
 const ICON_PATHS={

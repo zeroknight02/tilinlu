@@ -783,11 +783,63 @@ PAGES.dailyLearn.render=function(el){
     +list
     +editorHTML
     +'<button class="btn btn-primary" style="width:100%;margin-top:4px" data-act="learn.add">+ 添加学习项目</button>'
-    +(LEARN.items.length?'<div class="row" style="margin-top:10px;justify-content:center">'
-      +'<button class="btn btn-ghost btn-sm" data-act="learn.reset">重置今日进度</button></div>':'')
+    +'<div class="row" style="margin-top:10px;justify-content:center;flex-wrap:wrap;gap:8px">'
+    +'<button class="btn btn-ghost btn-sm" data-act="learn.importOpen">导入 JSON</button>'
+    +(LEARN.items.length?'<button class="btn btn-ghost btn-sm" data-act="learn.reset">重置今日进度</button>':'')
+    +'</div>'
+    +'<input type="file" id="learn-json-file" accept=".json,.csv,.txt,application/json,text/csv,text/plain" data-chg="learn.json" style="display:none">'
+    +'<div class="file-note" style="text-align:center;margin-top:6px">'
+    +'支持 JSON：<b>{"items":[{"name":"英语单词","unit":"个","target":20}]}</b>；也支持 CSV/TXT 每行 <b>名称,单位,目标</b>。同名项目自动跳过。</div>'
     +'<div class="home-foot">记录只保存在本机 · 每日目标仅提示不阻断</div>';
 };
 ACTIONS['learn.add']=()=>{LE={editing:null,open:true};render();};
+/* ---- 每日学习：导入 JSON ---- */
+ACTIONS['learn.importOpen']=()=>{const i=$id('learn-json-file');if(i)i.click();};
+CHANGES['learn.json']=async(d,t)=>{
+  const f=t.files&&t.files[0];if(!f)return;
+  try{
+    let data;
+    if(/\.(csv|txt)$/i.test(f.name)){
+      /* CSV / TXT：每行「名称,单位,目标」，逗号、中文逗号、制表符都认 */
+      const raw=f.text?await f.text():await new Promise((res,rej)=>{
+        const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(f);
+      });
+      const items=String(raw||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean)
+        .filter(x=>!/^(name|名称)[,，\t]/i.test(x))
+        .map(x=>{
+          const p=x.split(/[,，\t]/).map(v=>v.trim());
+          return {name:p[0],unit:p[1]||'个',target:p[2]};
+        });
+      data={items:items};
+    }else{
+      data=await readJsonFile(f);
+    }
+    /* 三种写法都认：{items:[...]}、[...]、单个 {...} */
+    let arr=Array.isArray(data)?data:(Array.isArray(data&&data.items)?data.items:((data&&(data.name||data.title))?[data]:[]));
+    if(!arr.length){toast('没找到学习项目：需要 items 数组','err');return;}
+    let add=0,skip=0,bad=0,longName=0;
+    arr.forEach(x=>{
+      const name=String((x&&(x.name||x.title))||'').trim();
+      let unit=String((x&&x.unit)||'个').trim()||'个';
+      const tg=parseInt((x&&x.target)||0,10);
+      if(!name){bad++;return;}
+      if(name.length>12){longName++;return;}
+      if(!(tg>=1&&tg<=999)){bad++;return;}
+      if(LEARN.items.some(y=>y.name===name)){skip++;return;}
+      LEARN.items.push({id:'l'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+        name:name,unit:unit.slice(0,4),target:tg});
+      add++;
+    });
+    if(add){saveLearn();render();}
+    const extra=[];
+    if(skip)extra.push('跳过 '+skip+' 项（已存在）');
+    if(bad)extra.push(bad+' 项格式不对');
+    if(longName)extra.push(longName+' 项名称超过 12 字');
+    toast(add?('已导入 '+add+' 项'+(extra.length?('，'+extra.join('，')):''))
+             :('没有新增'+(extra.length?('：'+extra.join('，')):'')),add?'ok':'warn');
+  }catch(e){toast((e&&e.message)||'导入失败','err');}
+  t.value='';
+};
 ACTIONS['learn.edit']=d=>{LE={editing:d.id,open:true};render();};
 ACTIONS['learn.cancel']=()=>{LE={editing:null,open:false};render();};
 ACTIONS['learn.inc']=d=>{learnInc(d.id,parseInt(d.v,10)||1);};

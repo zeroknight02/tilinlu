@@ -118,7 +118,7 @@ function loadAllData(){
   loadImgTab();
   loadTopics();
   loadCustExams();loadExamOverride();loadScoreOverride();loadExtraMods();
-  loadBank();loadStats();loadWrong();loadFav();loadRecs();loadBooks();
+  loadBank();loadStats();loadWrong();loadFav();loadRecs();loadBooks();loadStudyCatsExtra();
   loadLearn();loadSrs();
   const fs=lsGet(K.fontSize);
   FONT_SIZE=(fs==='sm'||fs==='lg')?fs:'md';applyFont();
