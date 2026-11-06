@@ -1,5 +1,7 @@
 /* 题灵录 · pages/import */
 /* ================= 导入题库 ================= */
+/* 三个导入入口共用的文件类型清单 */
+const IMP_ACCEPT_ALL='.json,.csv,.txt,.md,.markdown,.xlsx,.xls,.docx,.pdf,application/json,text/plain,text/csv';
 let IMP={draft:'',jsonDraft:'',aiText:'',tab:'paste',file:null,mode:null,fileStatus:'',qFile:null,aFile:null,qStatus:'',aStatus:'',xFile:null,xStatus:'',oFiles:null,oStatus:'',mdDraft:'',mdFile:null,mdStatus:''};
 function deviceMode(){
   const f=sessionStorage.getItem('qt_force_mode');if(f)return f;
@@ -246,6 +248,10 @@ function autoParseIntoPreview(text){
 
 /* ---- 导入页 ---- */
 PAGES.importPage={title:'导入题库'};
+const ANY_FILE_CARD='<div class="card"><b style="font-size:14px">任意格式直接导入</b>'
+  +'<div class="file-note" style="margin:4px 0 8px">选文件即可，按扩展名自动选解析方式：JSON / CSV / TXT / MD / Excel / Word / PDF</div>'
+  +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
+  +'<div class="ai-status" id="any-status"></div></div>';
 PAGES.importPage.render=function(el){
   const mode=IMP.mode=deviceMode();
   const tabs=[['paste','粘贴文本'],['md','Markdown'],['json','JSON'],['word','Word'],['pdf','PDF'],['dual','双文件'],['xlsx','Excel'],['ocr','OCR 扫描件'],['ai','AI 解析']];
@@ -257,7 +263,7 @@ PAGES.importPage.render=function(el){
     +'<button class="btn btn-primary btn-big" data-act="imp.auto">自动识别并预览</button>'
     +'<button class="btn btn-ghost" data-act="imp.examples">查看格式示例</button></div>'
     +'<label class="fl" style="margin-top:16px">或选择 JSON 题库文件（.json）</label>'
-    +'<input type="file" accept=".json,application/json" data-chg="imp.jsonfile">'
+    +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
     +'<div class="ai-status" id="json-file-status"></div>'
     +'<div class="file-note">自动匹配顺序：JSON → Markdown 表格 → Markdown 正文 → 分题块式（题号 /【答案】/【解析】/ A.B.C.D.）→ 行式简洁 → 整段一题。兼容全角半角、A./A、/A．、答案：/【答案】、ABC / A,B,C 等写法，Markdown 的 #、**、- 等标记会自动去掉，全部解析在本地完成。</div></div>';
   if(mode==='mobile'){
@@ -268,7 +274,7 @@ PAGES.importPage.render=function(el){
     if(IMP.tab==='paste')pane=pasteCard;
     else if(IMP.tab==='md'){
       pane='<div class="card"><label class="fl">选择 Markdown 文件（.md / .markdown / .txt）</label>'
-        +'<input type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" data-chg="imp.mdfile">'
+        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
         +'<div class="ai-status" id="md-status">'+esc(IMP.mdStatus||'')+'</div>'
         +'<label class="fl" style="margin-top:14px">或直接粘贴 Markdown 内容</label>'
         +'<textarea rows="8" data-imp="mdDraft" placeholder="## 1. 我国的根本政治制度是（ ）&#10;&#10;- A. 人民代表大会制度&#10;- B. 政治协商制度&#10;&#10;**答案：** A&#10;**解析：** 人民代表大会制度是我国的根本政治制度。">'+esc(IMP.mdDraft)+'</textarea>'
@@ -280,18 +286,18 @@ PAGES.importPage.render=function(el){
         +'<textarea rows="10" data-imp="jsonDraft" placeholder=\'{"questions":[…],"papers":[…]}\'>'+esc(IMP.jsonDraft)+'</textarea>'
         +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.json">解析 JSON 并预览</button>'
         +'<label class="fl" style="margin-top:16px">或选择 JSON 文件（大批量推荐）</label>'
-        +'<input type="file" accept=".json,application/json" data-chg="imp.jsonfile">'
+        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
         +'<div class="ai-status" id="json-file-status"></div>'
         +'<div class="file-note">支持纯题目数组，或含 questions / papers 的对象；字段说明见“查看格式示例”。超过 300 题会跳过逐条预览直接导入。</div></div>';
     }else if(IMP.tab==='word'){
       pane='<div class="card"><label class="fl">选择 Word 文档（.docx）</label>'
-        +'<input type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-chg="imp.file">'
+        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
         +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.word">解析并预览</button>'
         +'<div class="file-note">按需从 CDN 加载 mammoth（'+MAMMOTH_CDN+'），文件只在本地解析，不会上传。老式 .doc 或加密文档请改用粘贴文本。</div>'
         +'<div class="ai-status" id="file-status">'+esc(IMP.fileStatus||'')+'</div></div>';
     }else if(IMP.tab==='pdf'){
       pane='<div class="card"><label class="fl">选择 PDF 文件</label>'
-        +'<input type="file" accept="application/pdf,.pdf" data-chg="imp.file">'
+        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
         +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.pdf">解析并预览</button>'
         +'<div class="file-note">按需从 CDN 加载 pdf.js（'+PDFJS_CDN+'），仅提取文字层；扫描版 / 图片型 PDF 可改用「OCR 扫描件」标签。</div>'
         +'<div class="ai-status" id="file-status">'+esc(IMP.fileStatus||'')+'</div></div>';
@@ -307,7 +313,7 @@ PAGES.importPage.render=function(el){
         +'<div class="file-note">匹配规则：先按答案文件里的题号对号入座；若答案文件题号不连续，则按顺序逐条匹配未识别答案的客观题。适用于「题目册 + 答案册」分开的文档，全部本地解析。</div></div>';
     }else if(IMP.tab==='xlsx'){
       pane='<div class="card"><label class="fl">选择 Excel 文件（.xlsx / .xls / .csv）</label>'
-        +'<input type="file" accept=".xlsx,.xls,.csv" data-chg="imp.xfile">'
+        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
         +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.xlsx">解析并预览</button>'
         +'<div class="ai-status" id="xfile-status">'+esc(IMP.xStatus||'')+'</div>'
         +'<div class="file-note">第一行需为表头，支持列名：题干（必填）、选项A~选项H（或 A~H）、答案、解析、题型、模块、子类型、考试类型、科目。按需从 CDN 加载 SheetJS，本地解析。</div></div>';
@@ -341,6 +347,7 @@ PAGES.importPage.render=function(el){
   el.innerHTML=topbarHTML('导入题库')
     +'<div class="row" style="margin:10px 4px 2px;flex-wrap:wrap"><span class="mode-badge '+(mode==='desktop'?'pc':'')+'">'+(mode==='mobile'?'📱 手机模式 · 粘贴识别':'🖥 电脑模式 · '+tabs.length+' 种导入方式')+'</span>'
     +'<button class="btn-link" data-act="imp.switchMode">切换模式</button></div>'
+    +ANY_FILE_CARD
     +body
     +'<div class="card card-sm" style="text-align:center;margin-top:4px">'
     +'<button class="btn-link" data-act="bm.open">'+icon('trash',15)+' 选择删除部分题目</button><span class="muted"> ｜ </span>'
@@ -380,6 +387,17 @@ function importParsed(r){
   openPreview(r);
 }
 /* 合并导入：用 id 索引做 O(n) 合并，避免几万题时 O(n²) 卡死 */
+/* ================= 去重：只有题干+选项+答案+解析全部一致才算重复 ================= */
+function qNormTxt(x){return String(x==null?'':x).replace(/\s+/g,' ').trim();}
+function qFingerprint(q){
+  return simpleHash([
+    qNormTxt(q.q),
+    (q.o||[]).map(qNormTxt).join('\u0001'),
+    Array.isArray(q.a)?q.a.join(','):String(q.a==null?'':q.a),
+    qNormTxt(q.e||'')
+  ].join('\u0002'));
+}
+let DUP={items:[],papers:[],stat:null};
 function doMergeImport(items,papers,images){
   if(images&&typeof images==='object'){
     let added=0;
@@ -388,11 +406,29 @@ function doMergeImport(items,papers,images){
   }
   const idx=Object.create(null);
   BANK.forEach((q,i)=>{idx[q.id]=i;});
-  let add=0,upd=0;
+  /* 指纹 → 保留的那道题的 id（跨批、批内都用它） */
+  const fpKeep=Object.create(null);
+  BANK.forEach(q=>{const f=qFingerprint(q);if(!fpKeep[f])fpKeep[f]=q.id;});
+  const byStem=Object.create(null);
+  BANK.forEach(q=>{const k=qNormTxt(q.q);(byStem[k]=byStem[k]||[]).push(q);});
+
+  let add=0,skipExact=0;
+  const conflicts=[];
+  const remap=Object.create(null);   /* 被合并掉的 id → 保留下来的 id，用于修试卷引用 */
   uniqueBatchIds(items.map(it=>normQuestion(it.data,0))).forEach(nq=>{
-    const k=idx[nq.id];
-    if(k!=null){BANK[k]=nq;upd++;}else{idx[nq.id]=BANK.length;BANK.push(nq);add++;}
+    const f=qFingerprint(nq);
+    /* 1) 完全一样（题干+选项+答案+解析）→ 自动跳过，并记下映射 */
+    if(fpKeep[f]){skipExact++;if(fpKeep[f]!==nq.id)remap[nq.id]=fpKeep[f];return;}
+    /* 2) id 撞上但内容变了 → 冲突 */
+    const old=idx[nq.id]!=null?BANK[idx[nq.id]]:null;
+    if(old){conflicts.push({incoming:nq,existing:old,why:'id'});return;}
+    /* 3) 题干一样但内容不同 → 冲突 */
+    const same=byStem[qNormTxt(nq.q)];
+    if(same&&same.length){conflicts.push({incoming:nq,existing:same[0],why:'stem'});return;}
+    idx[nq.id]=BANK.length;BANK.push(nq);add++;
+    fpKeep[f]=nq.id;
   });
+
   const pidx=Object.create(null);
   PAPERS.forEach((p,i)=>{pidx[p.id]=i;});
   let pAdd=0;
@@ -401,30 +437,233 @@ function doMergeImport(items,papers,images){
     const k=pidx[p.id];
     if(k!=null)PAPERS[k]=p;else{pidx[p.id]=PAPERS.length;PAPERS.push(p);pAdd++;}
   });
+  /* 去重后把试卷里指向被合并题的 id 改到保留的那道，否则试卷会缺题 */
+  const remapN=Object.keys(remap).length;
+  if(remapN){
+    PAPERS.forEach(p=>{
+      if(!Array.isArray(p.questionIds))return;
+      const seen=Object.create(null),arr=[];
+      p.questionIds.forEach(id=>{
+        const t=remap[id]||id;
+        if(seen[t])return;
+        seen[t]=1;arr.push(t);
+      });
+      p.questionIds=arr;
+    });
+  }
   saveBank();
-  toast('导入完成：新增 '+add+' 题'+(upd?('，更新 '+upd+' 题'):'')+(pAdd?('，'+pAdd+' 套卷'):''),'ok');
+
+  const stat={add:add,skip:skipExact,pAdd:pAdd,conflicts:conflicts.length,remap:remapN};
+  if(conflicts.length){
+    DUP={items:conflicts.map(c=>({
+           existingId:c.existing.id,
+           existing:JSON.parse(JSON.stringify(c.existing)),
+           incoming:JSON.parse(JSON.stringify(c.incoming)),
+           ansTxt:{ex:dupAnsInput(c.existing),in:dupAnsInput(c.incoming)},
+           why:c.why,choice:'keep',applied:false,editing:false
+         })),
+         papers:papers||[],stat:stat};
+    toast('已导入 '+add+' 题，跳过 '+skipExact+' 道完全相同的；还有 '+conflicts.length+' 道需要你确认','warn');
+    goTo('dupReview',{});return;
+  }
+  toast('导入完成：新增 '+add+' 题'
+    +(skipExact?('，跳过 '+skipExact+' 道完全相同的题'):'')
+    +(pAdd?('，'+pAdd+' 套卷'):''),'ok');
   goHome();
 }
-CHANGES['imp.jsonfile']=async(d,t)=>{
-  const f=t.files&&t.files[0];if(!f)return;
-  const st=$id('json-file-status');
-  const setSt=x=>{if(st)st.textContent=x;};
-  try{
-    const sz=f.size>1048576?((f.size/1048576).toFixed(1)+' MB'):(Math.round(f.size/1024)+' KB');
-    setSt('正在读取 '+f.name+'（'+sz+'）…');
-    const txt=await f.text();
-    setSt('解析中…（大文件需要几秒）');
-    await new Promise(r=>setTimeout(r,30));
-    const r=parseImportJSON(txt);
-    if(!r.items.length)throw new Error('文件里没有解析到题目');
-    setSt('识别到 '+r.items.length+' 题 / '+(r.papers||[]).length+' 套卷');
-    importParsed(r);
-  }catch(e){
-    setSt('导入失败：'+(e.message||e));
-    toast('JSON 文件导入失败','err');
-  }finally{
-    t.value='';
+
+/* ================= 重复题确认页 ================= */
+PAGES.dupReview={title:'重复题确认'};
+/* 把答案转成好编辑的文字：单选 A/B/C，多选 A,C，判断 正确/错误，填空用 / 分隔 */
+function dupAnsInput(q){
+  const t=q.type;
+  const L='ABCDEFGH';
+  if(t==='short')return '';
+  if(t==='blank')return Array.isArray(q.a)?q.a.join('/'):String(q.a==null?'':q.a);
+  if(t==='judge')return q.a===1?'错误':(q.a===0?'正确':'');
+  if(t==='multiple')return (q.a||[]).map(i=>L[i]||'').filter(Boolean).join(',');
+  if(typeof q.a==='number'&&q.a>=0)return L[q.a]||String(q.a+1);
+  return '';
+}
+/* 把用户输入的文字解析回内部结构；解析不了返回 undefined */
+function dupParseAns(txt,type,n){
+  const s=String(txt||'').trim();
+  if(type==='short')return null;
+  if(type==='blank')return s.split(/[\/、,，]/).map(x=>x.trim()).filter(Boolean);
+  if(type==='judge'){
+    if(/^(正确|对|√|是|T|TRUE|1)$/i.test(s))return 0;
+    if(/^(错误|错|×|否|F|FALSE|0)$/i.test(s))return 1;
+    return undefined;
   }
+  const L='ABCDEFGH';
+  const toIdx=x=>{
+    const c=String(x).toUpperCase();
+    if(/^[A-H]$/.test(c))return c.charCodeAt(0)-65;
+    const k=parseInt(c,10);
+    if(!isFinite(k))return -1;
+    if(k>=1&&k<=n)return k-1;
+    if(k>=0&&k<n)return k;
+    return -1;
+  };
+  if(type==='multiple'){
+    const out=[];
+    String(s).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean).forEach(x=>{
+      const i=toIdx(x);if(i>=0&&i<n&&out.indexOf(i)<0)out.push(i);
+    });
+    return out.length?out.sort((a,b)=>a-b):undefined;
+  }
+  const one=s.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(!one)return undefined;
+  const i=toIdx(one);
+  return (i>=0&&i<n)?i:undefined;
+}
+PAGES.dupReview.render=function(el){
+  if(!DUP.items.length){
+    el.innerHTML=topbarHTML('重复题确认')+'<div class="card miss-empty">没有需要确认的题</div>';return;
+  }
+  const st=DUP.stat||{};
+  const left=DUP.items.filter(x=>!x.applied).length;
+  let cards='';
+  DUP.items.forEach((it,i)=>{
+    const a=it.existing,b=it.incoming;
+    const chosen=it.applied?it.choice:'';
+    const tagCls=v=>chosen===v?'btn-primary':'btn-plain';
+    if(it.editing){
+      const form=(q,pre,who)=>
+        '<div class="dup-col"><div class="dup-who">'+who+'</div>'
+        +'<label class="fl">题干</label><textarea rows="3" data-i="'+i+'" data-dupedit="'+pre+'.q">'+esc(q.q||'')+'</textarea>'
+        +'<label class="fl">选项（每行一个）</label><textarea rows="'+(Math.max(3,(q.o||[]).length)) +'" data-i="'+i+'" data-dupedit="'+pre+'.o">'+esc((q.o||[]).join('\n'))+'</textarea>'
+        +'<label class="fl">答案</label><input data-i="'+i+'" data-dupedit="'+pre+'.a" value="'+esc((it.ansTxt&&it.ansTxt[pre])||'')+'" placeholder="单选 A；多选 A,C；判断 正确/错误；填空用 / 分隔">'
+        +'<label class="fl">解析</label><textarea rows="4" data-i="'+i+'" data-dupedit="'+pre+'.e">'+esc(q.e||'')+'</textarea>'
+        +'</div>';
+      cards+='<div class="card card-sm dup-card">'
+        +'<div class="row" style="justify-content:space-between;flex-wrap:nowrap">'
+        +'<b style="font-size:14px">第 '+(i+1)+' 道 · 修改中</b></div>'
+        +form(a,'ex','题库里已有')
+        +form(b,'in','本次导入')
+        +'<div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px">'
+        +'<button class="btn btn-primary btn-sm" data-act="dup.saveEdit" data-i="'+i+'">保存修改</button>'
+        +'<button class="btn btn-plain btn-sm" data-act="dup.cancelEdit" data-i="'+i+'">取消</button>'
+        +'</div>'
+        +'<div class="file-note">两边都能改，改完点「保存修改」回到选择界面。</div>'
+        +'</div>';
+    }else{
+      const block=(q,who)=>
+        '<div class="dup-col"><div class="dup-who">'+who+'</div>'
+        +'<div class="dup-q">'+esc(String(q.q||''))+'</div>'
+        +(q.o&&q.o.length?'<div class="dup-line">选项：'+esc(q.o.join(' / '))+'</div>':'')
+        +'<div class="dup-line">答案：<b>'+esc(fmtAns(q,q.a))+'</b></div>'
+        +'<div class="dup-line">解析：'+esc(String(q.e||'（无）'))+'</div>'
+        +'</div>';
+      cards+='<div class="card card-sm dup-card">'
+        +'<div class="row" style="justify-content:space-between;flex-wrap:nowrap">'
+        +'<b style="font-size:14px">第 '+(i+1)+' 道</b>'
+        +(it.applied?'<span class="dup-tags">已保存</span>':'')
+        +'</div>'
+        +block(a,'题库里已有')
+        +block(b,'本次导入')
+        +'<div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px">'
+        +'<button class="btn btn-sm '+tagCls('keep')+'" data-act="dup.choose" data-i="'+i+'" data-v="keep">保留现有的</button>'
+        +'<button class="btn btn-sm '+tagCls('take')+'" data-act="dup.choose" data-i="'+i+'" data-v="take">用导入的</button>'
+        +'<button class="btn btn-sm '+tagCls('both')+'" data-act="dup.choose" data-i="'+i+'" data-v="both">两道都留</button>'
+        +'<button class="btn btn-sm btn-plain" data-act="dup.edit" data-i="'+i+'">修改</button>'
+        +'</div>'
+        +(it.applied
+          ?'<div class="file-note">已保存：'+(it.choice==='keep'?'保留现有的':(it.choice==='take'?'用导入的':'两道都留'))+'</div>'
+          :'<div class="file-note">还没选，默认「保留现有的」。</div>')
+        +'</div>';
+    }
+  });
+  el.innerHTML=topbarHTML('重复题确认')
+    +'<div class="card card-sm"><div class="muted">已导入 '+(st.add||0)+' 题'
+      +(st.skip?'，自动跳过 '+(st.skip)+' 道完全相同的题':'')
+      +'。下面 '+DUP.items.length+' 道与题库里已有题目部分相同，请选择保留哪个；'
+      +'想合并内容就点「修改」，两边都能改。</div></div>'
+    +'<div class="row" style="margin:6px 4px 10px;gap:8px;flex-wrap:wrap">'
+    +'<button class="btn btn-plain btn-sm" data-act="dup.all" data-v="keep">全部保留现有的</button>'
+    +'<button class="btn btn-plain btn-sm" data-act="dup.all" data-v="take">全部用导入的</button>'
+    +'</div>'
+    +cards
+    +'<button class="btn btn-primary" style="width:100%;margin-top:8px" data-act="dup.done">完成（'+left+' 道未选，按保留现有的处理）</button>'
+    +'<div class="file-note" style="text-align:center;margin-top:8px">选完记得点「完成」，否则本次导入的这些题不会落库。</div>';
+  /* 修改界面：输入即写进副本，切走再回来不会丢 */
+  el.querySelectorAll('[data-dupedit]').forEach(inp=>{
+    const i=parseInt(inp.dataset.i,10);
+    const parts=String(inp.dataset.dupedit).split('.');
+    const pre=parts[0],f=parts[1];
+    inp.addEventListener('input',()=>{
+      const it=DUP.items[i];if(!it)return;
+      const q=pre==='ex'?it.existing:it.incoming;
+      if(f==='o')q.o=inp.value.split('\n').map(x=>x.trim()).filter(x=>x!=='');
+      else if(f==='a'){it.ansTxt=it.ansTxt||{};it.ansTxt[pre]=inp.value;}
+      else q[f]=inp.value;
+    });
+  });
+};
+function applyDupItem(it){
+  if(it.applied)return;
+  const k=BANK.findIndex(q=>q.id===it.existingId);
+  if(it.choice==='both'){
+    if(k>=0)BANK[k]=it.existing;else BANK.push(it.existing);
+    const inc=Object.assign({},it.incoming);
+    let nid=inc.id,n=2;
+    while(BANK.some(q=>q.id===nid)){nid=inc.id+'-dup'+n;n++;}
+    inc.id=nid;BANK.push(inc);it.result=inc;
+  }else if(it.choice==='take'){
+    const inc=Object.assign({},it.incoming,{id:it.existingId});
+    if(k>=0)BANK[k]=inc;else BANK.push(inc);
+    it.result=inc;
+  }else{
+    if(k>=0)BANK[k]=it.existing;else BANK.push(it.existing);
+    it.result=it.existing;
+  }
+  it.applied=true;
+}
+ACTIONS['dup.choose']=d=>{
+  const it=DUP.items[parseInt(d.i,10)];if(!it)return;
+  it.choice=d.v;it.applied=false;
+  applyDupItem(it);saveBank();render();
+};
+ACTIONS['dup.edit']=d=>{
+  const it=DUP.items[parseInt(d.i,10)];if(!it)return;
+  it.editing=true;render();
+};
+ACTIONS['dup.cancelEdit']=d=>{
+  const it=DUP.items[parseInt(d.i,10)];if(!it)return;
+  it.editing=false;render();
+};
+ACTIONS['dup.saveEdit']=d=>{
+  const it=DUP.items[parseInt(d.i,10)];if(!it)return;
+  const bad=[];
+  [['ex','题库里已有'],['in','本次导入']].forEach(([pre,who])=>{
+    const q=pre==='ex'?it.existing:it.incoming;
+    if(!String(q.q||'').trim()){bad.push(who+'的题干不能为空');return;}
+    const ans=dupParseAns(it.ansTxt&&it.ansTxt[pre],q.type,(q.o||[]).length);
+    if(ans===undefined)bad.push(who+'的答案无法识别');
+    else q.a=ans;
+  });
+  if(bad.length){toast(bad[0],'err');return;}
+  it.editing=false;
+  it.applied=false;
+  toast('已保存修改','ok');
+  render();
+};
+ACTIONS['dup.all']=d=>{
+  DUP.items.forEach(it=>{it.choice=d.v;it.applied=false;applyDupItem(it);});
+  saveBank();render();
+  toast(d.v==='take'?'已全部用导入的':'已全部保留现有的','ok');
+};
+ACTIONS['dup.done']=()=>{
+  DUP.items.forEach(it=>{
+    if(it.applied)return;
+    it.choice=it.choice||'keep';
+    applyDupItem(it);
+  });
+  saveBank();
+  const st=DUP.stat||{};
+  toast('导入完成：新增 '+(st.add||0)+' 题，确认重复 '+DUP.items.length+' 道','ok');
+  DUP={items:[],papers:[],stat:null};
+  goHome();
 };
 ACTIONS['imp.json']=()=>{
   try{
@@ -433,12 +672,34 @@ ACTIONS['imp.json']=()=>{
     importParsed(r);
   }catch(e){toast('JSON 解析失败：'+(e.message||e),'err');}
 };
-CHANGES['imp.file']=(d,t)=>{
-  IMP.file=(t.files&&t.files[0])||null;
-  IMP.fileStatus=IMP.file?('已选择：'+IMP.file.name):'';
-  const st=$id('file-status');if(st)st.textContent=IMP.fileStatus;
+/* 任意格式：按扩展名分发到已有的解析器，不用再切标签 */
+CHANGES['imp.anyfile']=async(d,t)=>{
+  const f=t.files&&t.files[0];if(!f)return;
+  const st=$id('any-status');
+  const say=x=>{if(st)st.textContent=x;};
+  const name=(f.name||'').toLowerCase();
+  const readText=()=>f.text?f.text():new Promise((res,rej)=>{
+    const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(f);
+  });
+  try{
+    if(/\.json$/.test(name)){
+      say('读取 JSON…');
+      IMP.jsonDraft=await readText();
+      say('');ACTIONS['imp.json']();return;
+    }
+    if(/\.(xlsx|xls|csv)$/.test(name)){IMP.xFile=f;say('解析表格…');ACTIONS['imp.xlsx']();return;}
+    if(/\.docx$/.test(name)){IMP.file=f;say('解析 Word…');ACTIONS['imp.word']();return;}
+    if(/\.pdf$/.test(name)){IMP.file=f;say('解析 PDF…');ACTIONS['imp.pdf']();return;}
+    if(/\.(md|markdown|txt)$/.test(name)){IMP.mdFile=f;say('解析文本…');ACTIONS['imp.md']();return;}
+    say('不支持的文件类型：'+f.name);
+    toast('不支持的文件类型','err');
+  }catch(e){
+    say('导入失败：'+((e&&e.message)||e));
+    toast('导入失败','err');
+  }finally{
+    t.value='';
+  }
 };
-CHANGES['imp.mdfile']=(d,t)=>{IMP.mdFile=(t.files&&t.files[0])||null;IMP.mdStatus=IMP.mdFile?('已选择：'+IMP.mdFile.name):'';const st=$id('md-status');if(st)st.textContent=IMP.mdStatus;};
 ACTIONS['imp.md']=async()=>{
   const st=$id('md-status');const setSt=x=>{if(st)st.textContent=x;};
   try{
@@ -457,7 +718,6 @@ ACTIONS['imp.md']=async()=>{
 };
 CHANGES['imp.qfile']=(d,t)=>{IMP.qFile=(t.files&&t.files[0])||null;IMP.qStatus=IMP.qFile?('已选择：'+IMP.qFile.name):'';const st=$id('qfile-status');if(st)st.textContent=IMP.qStatus;};
 CHANGES['imp.afile']=(d,t)=>{IMP.aFile=(t.files&&t.files[0])||null;IMP.aStatus=IMP.aFile?('已选择：'+IMP.aFile.name):'';const st=$id('afile-status');if(st)st.textContent=IMP.aStatus;};
-CHANGES['imp.xfile']=(d,t)=>{IMP.xFile=(t.files&&t.files[0])||null;IMP.xStatus=IMP.xFile?('已选择：'+IMP.xFile.name):'';const st=$id('xfile-status');if(st)st.textContent=IMP.xStatus;};
 CHANGES['imp.ofile']=(d,t)=>{IMP.oFiles=t.files?Array.from(t.files):[];IMP.oStatus=IMP.oFiles.length?(IMP.oFiles.length+' 个文件：'+IMP.oFiles.map(f=>f.name).join('、').slice(0,80)):'';const st=$id('ocr-status');if(st)st.textContent=IMP.oStatus;};
 ACTIONS['imp.word']=async()=>{
   const st=$id('file-status');
@@ -534,7 +794,38 @@ async function extractFileText(file){
     if(file.text)return await file.text();
     return await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(file);});
   }
-  throw new Error('不支持的文件类型：'+file.name+'（支持 .docx / .pdf / .txt / .md）');
+  throw new Error('不支持的文件类型：'+file.name+'（支持 .json / .csv / .txt / .md / .xlsx / .xls / .docx / .pdf）');
+}
+/* ================= 统一导入格式 =================
+   题库 / 每日学习 / 教材 三个入口用同一串 accept，避免换个地方就要转格式 */
+async function extractAnyText(file){
+  const name=(file.name||'').toLowerCase();
+  if(/\.json$/.test(name)){
+    const txt=file.text?await file.text():await new Promise((res,rej)=>{
+      const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(file);
+    });
+    let json=null;
+    try{json=JSON.parse(txt);}catch(e){throw new Error('不是合法的 JSON 文件：'+(e&&e.message||''));}
+    return {isJson:true,text:txt,json:json};
+  }
+  if(/\.csv$/.test(name)){
+    /* CSV 当纯文本读，不必加载表格组件 */
+    const txt=file.text?await file.text():await new Promise((res,rej)=>{
+      const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(file);
+    });
+    return {isJson:false,text:txt,json:null};
+  }
+  if(/\.(xlsx|xls)$/.test(name)){
+    await loadScript(XLSX_CDN,()=>window.XLSX);
+    const buf=await fileToArrayBuffer(file);
+    const wb=window.XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=window.XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    const text=rows.map(r=>r.map(c=>String(c==null?'':c)).join('\t')).join('\n');
+    return {isJson:false,text:text,json:null};
+  }
+  const text=await extractFileText(file);
+  return {isJson:false,text:text,json:null};
 }
 function parseAnswerFile(text){
   const m=new Map();

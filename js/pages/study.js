@@ -184,19 +184,16 @@ PAGES.studyImport.render=function(el){
     +'<label class="fl">说明（可选）</label><input data-bkimp="note" value="'+esc(BKIMP.note)+'" placeholder="如：基础知识梳理">'
     +'<label class="fl">教材内容（纯文本）</label>'
     +'<textarea rows="12" data-bkimp="draft" placeholder="支持“第X章 / 第X节”“一、”“1.”“【考点】”“# 标题”等章节写法，保存时自动拆分为学习小节">'+esc(BKIMP.draft)+'</textarea>'
-    +'<label class="fl">或导入 JSON 教材（可一次导入多本）</label>'
-    +'<input type="file" accept=".json,application/json" data-chg="bkimp.json">'
-    +'<div class="file-note" id="json-status"></div>'
+    +'<label class="fl">或从文件读取（JSON 直接导入整本，其他格式读入文本框）</label>'
+    +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="bkimp.file">'
+    +'<div class="row" style="margin-top:8px"><button class="btn btn-plain btn-sm" data-act="bkimp.word">重解析 Word</button>'
+    +'<button class="btn btn-plain btn-sm" data-act="bkimp.pdf">重解析 PDF</button></div>'
+    +'<div class="file-note" id="file-status">'+esc(BKIMP.fileStatus||'')+'</div>'
+    +'<div class="file-note">支持 JSON / CSV / TXT / MD / Excel / Word / PDF；除 JSON 外都会读成文本放进上面的框，检查后再保存。</div>'
     +'<details style="margin-top:6px"><summary class="muted" style="cursor:pointer;font-size:12.5px">查看 JSON 格式</summary>'
     +'<pre style="font-size:11px;line-height:1.6;background:var(--line);padding:10px;border-radius:10px;overflow:auto;white-space:pre-wrap;margin-top:6px">'+esc(STUDY_JSON_SAMPLE)+'</pre>'
     +'<div class="file-note">cat / module 不填就用上面选的；没写 sections 但写了 content，会按章节自动拆分；最外层是数组则一次导入多本。同名同模块的教材会自动跳过。</div>'
     +'</details>'
-    +'<label class="fl">或从文件读取</label>'
-    +'<input type="file" accept=".txt,.md,.markdown,.docx,.pdf" data-chg="bkimp.file">'
-    +(mode==='desktop'?'<div class="row" style="margin-top:8px"><button class="btn btn-plain btn-sm" data-act="bkimp.word">解析 Word(.docx)</button>'
-      +'<button class="btn btn-plain btn-sm" data-act="bkimp.pdf">解析 PDF</button></div>':'')
-    +'<div class="file-note" id="file-status">'+esc(BKIMP.fileStatus||'')+'</div>'
-    +'<div class="file-note">.txt / .md 选中后会直接读入上面的文本框（手机也能用）；.docx / .pdf 需在电脑上解析。</div>'
     +'<button class="btn btn-primary" style="width:100%;margin-top:14px" data-act="bkimp.save">保存并开始学习</button>'
     +'<div class="file-note">保存后自动进入对应模块的学习页；全部在本地处理。</div>'
     +'</div>';
@@ -207,84 +204,79 @@ document.addEventListener('input',e=>{
   const t=e.target.closest('[data-bkimp]');
   if(t)BKIMP[t.dataset.bkimp]=t.value;
 });
+/* 统一的文件入口：JSON 走整本导入，其余格式读成文本放进草稿框 */
+function importBooksData(data){
+  const list=Array.isArray(data)?data:[data];
+  const defCat=BKIMP.cat||'国考';
+  let add=0,skip=0,bad=0,lastId=null;
+  list.forEach(b=>{
+    const title=String((b&&(b.title||b.name))||'').trim();
+    if(!title){bad++;return;}
+    const cat=String((b&&b.cat)||defCat);
+    const mod=String((b&&(b.module||b.subject))||BKIMP.module||'').trim();
+    if(!mod){bad++;return;}
+    let secs=Array.isArray(b.sections)
+      ? b.sections.filter(x=>x&&x.t).map(x=>({t:String(x.t).slice(0,80),c:String(x.c||'')}))
+      : [];
+    if(!secs.length&&b.content)secs=parseStudySections(String(b.content));
+    if(!secs.length){bad++;return;}
+    if(BOOKS.some(x=>x.cat===cat&&x.module===mod&&x.title===title)){skip++;return;}
+    const id='bk-'+simpleHash(cat+'|'+mod+'|'+title)+Date.now().toString(36).slice(-4);
+    BOOKS.push({id:id,title:title,note:String(b.note||'').trim(),cat:cat,module:mod,addedAt:Date.now(),sections:secs});
+    lastId=id;add++;
+  });
+  if(add){
+    saveBooks();
+    STUDY.cat=defCat;lsSet(K.studyCat,defCat);
+  }
+  return {add:add,skip:skip,bad:bad,lastId:lastId};
+}
 CHANGES['bkimp.file']=async(d,t)=>{
   const f=(t.files&&t.files[0])||null;
   BKIMP.file=f;
   BKIMP.fileStatus=f?('已选择：'+f.name):'';
   const st=$id('file-status');if(st)st.textContent=BKIMP.fileStatus;
   if(!f)return;
-  /* .txt / .md 直接读进文本框，手机也能用 */
-  if(/\.(txt|md|markdown)$/i.test(f.name)){
-    try{
-      const txt=f.text?await f.text():await new Promise((res,rej)=>{
-        const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('读取失败'));r.readAsText(f);
-      });
-      BKIMP.draft=txt;
-      const ta=document.querySelector('textarea[data-bkimp=draft]');
-      if(ta)ta.value=txt;
-      if(!BKIMP.title){
-        BKIMP.title=f.name.replace(/\.[^.]+$/,'');
-        const ti=document.querySelector('input[data-bkimp=title]');
-        if(ti)ti.value=BKIMP.title;
-      }
-      const n=parseStudySections(txt).length;
-      BKIMP.fileStatus='已读入 '+f.name+'（识别到 '+n+' 节）';
-      if(st)st.textContent=BKIMP.fileStatus;
-      toast('已读入文本，检查后点「保存并开始学习」','ok');
-    }catch(e){toast((e&&e.message)||'读取失败','err');}
-    return;
-  }
-  /* 手机上没法解析 Word / PDF，给个明确提示 */
-  if(/\.(docx|pdf|doc)$/i.test(f.name)&&deviceMode()!=='desktop'){
-    BKIMP.fileStatus='手机端不支持解析 '+f.name.split('.').pop().toUpperCase()+'，请在电脑上操作，或把内容粘贴到上面的文本框';
-    if(st)st.textContent=BKIMP.fileStatus;
-  }
-};
-/* ---- 教材：导入 JSON ---- */
-CHANGES['bkimp.json']=async(d,t)=>{
-  const f=t.files&&t.files[0];if(!f)return;
-  const st=$id('json-status');
-  const say=x=>{if(st)st.textContent=x;};
-  say('正在解析…');
   try{
-    const data=await readJsonFile(f);
-    const list=Array.isArray(data)?data:[data];
-    const defCat=BKIMP.cat||'国考';
-    let add=0,skip=0,bad=0,lastId=null,lastTitle='';
-    list.forEach(b=>{
-      const title=String((b&&(b.title||b.name))||'').trim();
-      if(!title){bad++;return;}
-      const cat=String((b&&b.cat)||defCat);
-      const mod=String((b&&(b.module||b.subject))||BKIMP.module||'').trim();
-      if(!mod){bad++;return;}
-      let secs=Array.isArray(b.sections)
-        ? b.sections.filter(x=>x&&x.t).map(x=>({t:String(x.t).slice(0,80),c:String(x.c||'')}))
-        : [];
-      if(!secs.length&&b.content)secs=parseStudySections(String(b.content));
-      if(!secs.length){bad++;return;}
-      if(BOOKS.some(x=>x.cat===cat&&x.module===mod&&x.title===title)){skip++;return;}
-      const id='bk-'+simpleHash(cat+'|'+mod+'|'+title)+Date.now().toString(36).slice(-4);
-      BOOKS.push({id:id,title:title,note:String(b.note||'').trim(),cat:cat,module:mod,addedAt:Date.now(),sections:secs});
-      lastId=id;lastTitle=title;add++;
-    });
-    const extra=[];
-    if(skip)extra.push('跳过 '+skip+' 本重复');
-    if(bad)extra.push(bad+' 本格式不对');
-    if(add){
-      saveBooks();
-      STUDY.cat=defCat;lsSet(K.studyCat,defCat);
-      toast('已导入 '+add+' 本教材'+(extra.length?('，'+extra.join('，')):''),'ok');
-      if(add===1&&lastId){goTo('study',{bookId:lastId});return;}
-      say('已导入 '+add+' 本');
-      render();return;
+    const r=await extractAnyText(f);
+    if(r.isJson){
+      const res=importBooksData(r.json);
+      const extra=[];
+      if(res.skip)extra.push('跳过 '+res.skip+' 本重复');
+      if(res.bad)extra.push(res.bad+' 本格式不对');
+      if(res.add){
+        toast('已导入 '+res.add+' 本教材'+(extra.length?('，'+extra.join('，')):''),'ok');
+        if(res.add===1&&res.lastId){goTo('study',{bookId:res.lastId});return;}
+        render();return;
+      }
+      BKIMP.fileStatus='';
+      if(st)st.textContent='';
+      toast('没有新增'+(extra.length?('：'+extra.join('，')):''),'warn');
+      return;
     }
-    say('');
-    toast('没有新增'+(extra.length?('：'+extra.join('，')):''),'warn');
+    /* 非 JSON：读成文本填进草稿框，用户检查后再保存 */
+    const txt=r.text||'';
+    if(!txt.trim()){toast('文件里没有读到内容','warn');return;}
+    BKIMP.draft=txt;
+    const ta=document.querySelector('textarea[data-bkimp=draft]');
+    if(ta)ta.value=txt;
+    if(!BKIMP.title){
+      BKIMP.title=f.name.replace(/\.[^.]+$/,'');
+      const ti=document.querySelector('input[data-bkimp=title]');
+      if(ti)ti.value=BKIMP.title;
+    }
+    const n=parseStudySections(txt).length;
+    BKIMP.fileStatus='已读入 '+f.name+'（识别到 '+n+' 节）';
+    if(st)st.textContent=BKIMP.fileStatus;
+    toast('已读入文本，检查后点「保存并开始学习」','ok');
   }catch(e){
-    say('');
-    toast((e&&e.message)||'导入失败','err');
+    const msg=(e&&e.message)||'读取失败';
+    BKIMP.fileStatus=msg;
+    if(st)st.textContent=msg;
+    toast(msg,'err');
+  }finally{
+    t.value='';
   }
-  t.value='';
 };
 ACTIONS['bkimp.word']=async()=>{
   const st=$id('file-status');

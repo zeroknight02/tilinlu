@@ -787,9 +787,9 @@ PAGES.dailyLearn.render=function(el){
     +'<button class="btn btn-ghost btn-sm" data-act="learn.importOpen">导入 JSON</button>'
     +(LEARN.items.length?'<button class="btn btn-ghost btn-sm" data-act="learn.reset">重置今日进度</button>':'')
     +'</div>'
-    +'<input type="file" id="learn-json-file" accept=".json,.csv,.txt,application/json,text/csv,text/plain" data-chg="learn.json" style="display:none">'
+    +'<input type="file" id="learn-json-file" accept="'+IMP_ACCEPT_ALL+'" data-chg="learn.json" style="display:none">'
     +'<div class="file-note" style="text-align:center;margin-top:6px">'
-    +'支持 JSON：<b>{"items":[{"name":"英语单词","unit":"个","target":20}]}</b>；也支持 CSV/TXT 每行 <b>名称,单位,目标</b>。同名项目自动跳过。</div>'
+    +'支持 JSON / CSV / TXT / MD / Excel / Word / PDF。JSON 写法 <b>{"items":[{"name":"英语单词","unit":"个","target":20}]}</b>；其他格式按行读 <b>名称,单位,目标</b>。同名项目自动跳过。</div>'
     +'<div class="home-foot">记录只保存在本机 · 每日目标仅提示不阻断</div>';
 };
 ACTIONS['learn.add']=()=>{LE={editing:null,open:true};render();};
@@ -798,25 +798,24 @@ ACTIONS['learn.importOpen']=()=>{const i=$id('learn-json-file');if(i)i.click();}
 CHANGES['learn.json']=async(d,t)=>{
   const f=t.files&&t.files[0];if(!f)return;
   try{
+    const r=await extractAnyText(f);
     let data;
-    if(/\.(csv|txt)$/i.test(f.name)){
-      /* CSV / TXT：每行「名称,单位,目标」，逗号、中文逗号、制表符都认 */
-      const raw=f.text?await f.text():await new Promise((res,rej)=>{
-        const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(f);
-      });
-      const items=String(raw||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean)
+    if(r.isJson){
+      data=r.json;
+    }else{
+      /* 非 JSON（CSV / TXT / MD / Excel / Word / PDF 提取的文本）：
+         每行「名称,单位,目标」，逗号、中文逗号、制表符都认 */
+      const items=String(r.text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean)
         .filter(x=>!/^(name|名称)[,，\t]/i.test(x))
         .map(x=>{
           const p=x.split(/[,，\t]/).map(v=>v.trim());
           return {name:p[0],unit:p[1]||'个',target:p[2]};
         });
       data={items:items};
-    }else{
-      data=await readJsonFile(f);
     }
     /* 三种写法都认：{items:[...]}、[...]、单个 {...} */
     let arr=Array.isArray(data)?data:(Array.isArray(data&&data.items)?data.items:((data&&(data.name||data.title))?[data]:[]));
-    if(!arr.length){toast('没找到学习项目：需要 items 数组','err');return;}
+    if(!arr.length){toast('没找到学习项目：需要 items 数组，或每行「名称,单位,目标」','err');return;}
     let add=0,skip=0,bad=0,longName=0;
     arr.forEach(x=>{
       const name=String((x&&(x.name||x.title))||'').trim();
