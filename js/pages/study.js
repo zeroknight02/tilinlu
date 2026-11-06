@@ -474,9 +474,10 @@ ACTIONS['bm.del']=()=>{
     BANK=BANK.filter(q=>!BM.sel.has(q.id));
     PAPERS.forEach(p=>{p.questionIds=(p.questionIds||[]).filter(id=>!BM.sel.has(id));});
     WRONG=WRONG.filter(w=>!BM.sel.has(w.questionId));
+    const freed=pruneImages();        /* 顺手清掉不再被引用的配图 */
     saveBank();saveWrong();
     BM.sel.clear();
-    toast('已删除 '+n+' 道题目','ok');
+    toast('已删除 '+n+' 道题目'+(freed?('，清理 '+freed+' 张配图'):''),'ok');
     render();
   }});
 };

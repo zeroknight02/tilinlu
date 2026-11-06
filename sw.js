@@ -1,6 +1,6 @@
 /* 题灵录 · Service Worker：应用壳预缓存，飞行模式离线可用 */
 /* 缓存名里的数字必须与 index.html 的 APP_BUILD 一致；改版本时两边一起改 */
-const CACHE = 'qt-shell-v48';
+const CACHE = 'qt-shell-v50';
 /* 图片单独一个缓存：不随应用版本删除。
    真题的公式图/题目图有 25 万张，看过的图靠这个缓存离线可用；
    若混在应用壳缓存里，每次更新都会被清空。 */
@@ -27,8 +27,11 @@ const SHELL = [
 ];
 
 self.addEventListener('install', e => {
+  /* 逐个缓存：某个文件缺失（比如图标没上传）不该让整个离线包失效 */
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => {}))))
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -62,11 +65,24 @@ self.addEventListener('fetch', e => {
   if (url.origin === location.origin) {
     if (bust) return;
     e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request).then(r2 => {
-        const cp = r2.clone();
-        caches.open(CACHE).then(c => c.put(e.request, cp)).catch(() => {});
-        return r2;
-      })).catch(() => caches.match('./index.html'))
+      caches.match(e.request).then(r => {
+        if (r) return r;
+        return fetch(e.request).then(r2 => {
+          /* 只缓存成功的响应。以前把 404 也写进缓存，图标一旦缺过一次就永远是空白 */
+          if (r2 && r2.ok && r2.type !== 'opaque') {
+            const cp = r2.clone();
+            caches.open(CACHE).then(c => c.put(e.request, cp)).catch(() => {});
+          }
+          return r2;
+        });
+      }).catch(() => {
+        /* 离线且没缓存：只有页面导航才回退到 index.html，
+           图标/脚本这类资源直接失败，别拿 HTML 冒充图片 */
+        if (e.request.mode === 'navigate' || e.request.destination === 'document') {
+          return caches.match('./index.html');
+        }
+        return Response.error();
+      })
     );
     return;
   }

@@ -106,7 +106,21 @@ async function fillStorage(){
     mode.textContent=USE_IDB?'IndexedDB':'localStorage（降级模式）';
     mode.style.color=USE_IDB?'':'var(--warn)';
   }
+  const ic=document.getElementById('st-imgcache');
+  if(ic)imgCacheCount().then(n=>{ic.textContent=n?(n+' 个文件'):'无';});
 }
+/* 清理网页图片缓存（不影响题库与进度） */
+ACTIONS['about.clearImgCache']=async()=>{
+  const n=await imgCacheCount();
+  if(!n){toast('没有图片缓存','warn');return;}
+  qtConfirm({title:'清理图片缓存',
+    msg:'将清除网页图片缓存（'+n+' 个文件）。题库、进度、错题都不受影响，已导入的配图也仍在本地；只是下次查看需要联网重新下载。',
+    okText:'清理',danger:true,onOk:async()=>{
+      await clearImgCache();
+      toast('已清理图片缓存','ok');
+      render();
+    }});
+};
 PAGES.about={title:'关于'};
 PAGES.about.render=function(el){
   const snap=lsJson(K.snapshot,null);
@@ -156,6 +170,8 @@ PAGES.about.render=function(el){
     +'<span class="st-v"><b id="st-cnt">—</b><i id="st-cap"></i></span></div>'
     +'<div class="st-row"><span class="st-k">位置</span>'
     +'<span class="st-v"><b id="st-mode" style="font-size:12.5px;font-weight:700">—</b></span></div>'
+    +'<div class="st-row"><span class="st-k">图片缓存</span>'
+    +'<span class="st-v"><b id="st-imgcache">—</b><button class="btn-link" data-act="about.clearImgCache">清理</button></span></div>'
     +'<div class="about-hint" style="opacity:.72">上行为已用 / 本机配额，下行为已用 / 估算上限；记录增多会略微降低可存题量。</div>'
     +'</div>'
     +'<div class="card"><b style="font-size:15px">数据保护</b>'

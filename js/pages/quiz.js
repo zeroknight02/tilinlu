@@ -338,7 +338,7 @@ ACTIONS['q.flag']=d=>{
 };
 ACTIONS['q.delImg']=()=>{
   const q=curQ();if(!q)return;
-  q.img='';saveBank();closeModal();render();toast('已删除配图','ok');
+  q.img='';q.imgs=[];pruneImages();saveBank();closeModal();render();toast('已删除配图','ok');
 };
 ACTIONS['q.noteOpen']=()=>{
   const q=curQ();if(!q)return;

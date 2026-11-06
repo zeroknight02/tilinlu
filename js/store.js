@@ -237,8 +237,8 @@ const CLOUD_DEFAULT='https://cdn.jsdelivr.net/gh/你的用户名/题库仓库@ma
 const DEMO_IDS={'q-001':1,'q-002':1,'q-003':1,'q-004':1,'q-005':1,'q-006':1,'q-007':1,'q-008':1,'q-009':1,'q-010':1,'q-011':1,'q-012':1,'q-013':1,'q-014':1,'q-015':1,'q-016':1};
 
 /* ================= 版本 ================= */
-const APP_VER='v2.5.0';
-const APP_BUILD=48;
+const APP_VER='v2.5.2';
+const APP_BUILD=50;
 const APP_DATE='2026-11-02';
 /* 正式版已启用（2026-11-02）：
    任何「更新时自动清理本地数据」的逻辑都会被强制跳过，
@@ -679,6 +679,36 @@ function loadImgTab(){
   if(!IMG_TAB||typeof IMG_TAB!=='object'||Array.isArray(IMG_TAB))IMG_TAB={};
 }
 function saveImgTab(){lsSet(K.imgtab,JSON.stringify(IMG_TAB));}
+/* 清掉不再被任何题目引用的图片：删题/清空后调用，否则图片表只增不减 */
+function pruneImages(){
+  const used=Object.create(null);
+  const mark=v=>{if(typeof v==='string'&&v.charAt(0)==='@')used[v.slice(1)]=1;};
+  BANK.forEach(q=>{
+    if(Array.isArray(q.imgs))q.imgs.forEach(mark);
+    if(q.img)mark(q.img);
+  });
+  let del=0;
+  Object.keys(IMG_TAB).forEach(k=>{if(!used[k]){delete IMG_TAB[k];del++;}});
+  if(del)saveImgTab();
+  return del;
+}
+/* 网络图片缓存（Service Worker 的 qt-img-v1），清空题库后可一并释放 */
+function imgCacheCount(){
+  return new Promise(res=>{
+    try{
+      if(!('caches' in window))return res(0);
+      caches.open('qt-img-v1').then(c=>c.keys()).then(ks=>res(ks.length)).catch(()=>res(0));
+    }catch(e){res(0);}
+  });
+}
+function clearImgCache(){
+  return new Promise(res=>{
+    try{
+      if(!('caches' in window))return res(0);
+      caches.delete('qt-img-v1').then(ok=>res(ok?1:0)).catch(()=>res(0));
+    }catch(e){res(0);}
+  });
+}
 function loadWrong(){
   WRONG=lsJson(K.wrong,[]);
   if(!Array.isArray(WRONG))WRONG=[];

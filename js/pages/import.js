@@ -360,8 +360,9 @@ ACTIONS['imp.switchMode']=()=>{
   render();
 };
 ACTIONS['imp.clearAll']=()=>{
-  qtConfirm({title:'清空题库',msg:'将删除题库中现有全部题目（当前 '+BANK.length+' 道）、'+PAPERS.length+' 套套卷，以及与之关联的错题和收藏。\n累计作答统计会保留；清空后可通过“导入备份”恢复。确定清空？',okText:'清空',danger:true,onOk:()=>{
+  qtConfirm({title:'清空题库',msg:'将删除题库中现有全部题目（当前 '+BANK.length+' 道）、'+PAPERS.length+' 套套卷，以及与之关联的错题、收藏和导入的配图。\n累计作答统计会保留；清空后可通过“导入备份”恢复。\n（网页图片缓存不在此处，可在「关于 → 存储占用」单独清理）',okText:'清空',danger:true,onOk:()=>{
     BANK=[];PAPERS=[];WRONG=[];FAV=[];
+    IMG_TAB={};saveImgTab();          /* 配图跟着题库一起清，否则占用空间不下降 */
     saveBank();saveWrong();saveFav();
     toast('题库已清空，可导入新题目','ok');
     render();
