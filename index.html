@@ -536,6 +536,11 @@ pre.ex-pre{background:#f4fafb;border:1px solid var(--line);border-radius:10px;pa
 .dup-who{font-size:11px;font-weight:700;color:var(--text-sub);letter-spacing:.4px;margin-bottom:4px;}
 .dup-q{font-size:13.5px;line-height:1.55;color:var(--text);margin-bottom:4px;}
 .dup-line{font-size:12px;line-height:1.6;color:var(--text-sub);}
+.dup-diff{background:#fde68a;color:#5b4300;border-radius:3px;padding:0 1px;font-style:normal;
+  -webkit-box-decoration-break:clone;box-decoration-break:clone;}
+body[data-theme="night"] .dup-diff{background:rgba(250,204,21,.28);color:#fde68a;}
+body[data-theme="ocean"] .dup-diff{background:rgba(250,204,21,.34);color:#4a3600;}
+body[data-theme="shuimo"] .dup-diff{background:rgba(234,179,8,.34);color:#3d2f00;}
 #print-root{display:none;}
 @media print{
   body > #app, body > #toasts, body > #modal-root, body > .botbar{display:none !important;}

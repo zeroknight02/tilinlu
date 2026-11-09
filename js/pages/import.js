@@ -510,6 +510,35 @@ function dupParseAns(txt,type,n){
   const i=toIdx(one);
   return (i>=0&&i<n)?i:undefined;
 }
+/* 逐字对比：返回两边的片段，different=true 的部分用黄色标出。
+   用最长公共子序列对齐，中文字符级即可；超长文本退化为整段标记，避免卡死。 */
+function dupDiffSides(a,b){
+  a=String(a==null?'':a);b=String(b==null?'':b);
+  if(a===b)return [[{t:a,d:false}],[{t:b,d:false}]];
+  if(a.length*b.length>400000)return [[{t:a,d:true}],[{t:b,d:true}]];
+  const n=a.length,m=b.length;
+  const dp=new Uint32Array((n+1)*(m+1));
+  const at=(i,j)=>i*(m+1)+j;
+  for(let i=n-1;i>=0;i--){
+    for(let j=m-1;j>=0;j--){
+      dp[at(i,j)]=a[i]===b[j]?dp[at(i+1,j+1)]+1:Math.max(dp[at(i+1,j)],dp[at(i,j+1)]);
+    }
+  }
+  const A=[],B=[];let i=0,j=0;
+  const push=(arr,ch,d)=>{const last=arr[arr.length-1];
+    if(last&&last.d===d)last.t+=ch;else arr.push({t:ch,d:d});};
+  while(i<n&&j<m){
+    if(a[i]===b[j]){push(A,a[i],false);push(B,b[j],false);i++;j++;}
+    else if(dp[at(i+1,j)]>=dp[at(i,j+1)]){push(A,a[i],true);i++;}
+    else{push(B,b[j],true);j++;}
+  }
+  while(i<n){push(A,a[i],true);i++;}
+  while(j<m){push(B,b[j],true);j++;}
+  return [A,B];
+}
+function dupDiffHTML(segs){
+  return segs.map(s=>s.d?('<mark class="dup-diff">'+esc(s.t)+'</mark>'):esc(s.t)).join('');
+}
 PAGES.dupReview.render=function(el){
   if(!DUP.items.length){
     el.innerHTML=topbarHTML('重复题确认')+'<div class="card miss-empty">没有需要确认的题</div>';return;
@@ -541,20 +570,41 @@ PAGES.dupReview.render=function(el){
         +'<div class="file-note">两边都能改，改完点「保存修改」回到选择界面。</div>'
         +'</div>';
     }else{
-      const block=(q,who)=>
-        '<div class="dup-col"><div class="dup-who">'+who+'</div>'
-        +'<div class="dup-q">'+esc(String(q.q||''))+'</div>'
-        +(q.o&&q.o.length?'<div class="dup-line">选项：'+esc(q.o.join(' / '))+'</div>':'')
-        +'<div class="dup-line">答案：<b>'+esc(fmtAns(q,q.a))+'</b></div>'
-        +'<div class="dup-line">解析：'+esc(String(q.e||'（无）'))+'</div>'
-        +'</div>';
+      const block=(q,other,who,pre)=>{
+        const [sA,sB]=dupDiffSides(q.q,other.q);
+        const [eA,eB]=dupDiffSides(q.e,other.e);
+        const self=sA;   /* 第一个返回值就是本列自己的片段 */
+        const oa=q.o||[],ob=other.o||[];
+        let optLine='';
+        if(oa.length||ob.length){
+          const maxN=Math.max(oa.length,ob.length);
+          const parts=[];
+          for(let k=0;k<maxN;k++){
+            const x=oa[k],y=ob[k];
+            const same=(x==null?null:x)===(y==null?null:y);
+            const val=x;   /* x 来自 q，就是本列 */
+            if(val==null)continue;
+            parts.push(same?esc(val):('<mark class="dup-diff">'+esc(val)+'</mark>'));
+          }
+          optLine='<div class="dup-line">选项：'+parts.join(' / ')+'</div>';
+        }
+        const ansA=fmtAns(q,q.a),ansB=fmtAns(other,other.a);
+        return '<div class="dup-col"><div class="dup-who">'+who+'</div>'
+          +'<div class="dup-q">'+dupDiffHTML(self)+'</div>'
+          +optLine
+          +'<div class="dup-line">答案：<b>'+(ansA===ansB?esc(ansA):('<mark class="dup-diff">'+esc(ansA)+'</mark>'))+'</b></div>'
+          +'<div class="dup-line">解析：'+(String(q.e||'')===String(other.e||'')
+              ?esc(String(q.e||'（无）'))
+              :dupDiffHTML(eA))+'</div>'
+          +'</div>';
+      };
       cards+='<div class="card card-sm dup-card">'
         +'<div class="row" style="justify-content:space-between;flex-wrap:nowrap">'
         +'<b style="font-size:14px">第 '+(i+1)+' 道</b>'
         +(it.applied?'<span class="dup-tags">已保存</span>':'')
         +'</div>'
-        +block(a,'题库里已有')
-        +block(b,'本次导入')
+        +block(a,b,'题库里已有','ex')
+        +block(b,a,'本次导入','in')
         +'<div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px">'
         +'<button class="btn btn-sm '+tagCls('keep')+'" data-act="dup.choose" data-i="'+i+'" data-v="keep">保留现有的</button>'
         +'<button class="btn btn-sm '+tagCls('take')+'" data-act="dup.choose" data-i="'+i+'" data-v="take">用导入的</button>'
