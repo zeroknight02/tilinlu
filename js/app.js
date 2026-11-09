@@ -63,7 +63,7 @@ document.addEventListener('keydown',e=>{
   }
   const k=(e.key.length===1)?e.key.toUpperCase():e.key;
   const li=letters().indexOf(k);
-  if(page==='practice'||page==='mistakePractice'){
+  if(page==='practice'||page==='setPractice'){
     const st=quizState();if(!st)return;
     const q=st.qs[st.idx];if(!q)return;
     if(!st.locked&&OBJ_TYPES.includes(q.type)&&li>-1&&li<q.o.length){
@@ -140,11 +140,14 @@ function init(){
   const th=lsGet(K.theme);
   if(th&&THEMES[th]&&th!=='qingshuang')document.body.dataset.theme=th;
   applyThemeColor();
+  if(STORAGE_LOCKED){
+    $id('app').innerHTML='<div class="card"><b>本机数据库读取失败</b><p>为保护题库，已停止加载和写入。原数据未被清空；请关闭其他窗口后重试，不要清除浏览器数据。</p><button class="btn btn-primary" id="storage-retry">重新读取</button></div>';
+    $id('storage-retry').onclick=()=>location.reload();
+    return;
+  }
+  guardData();              /* 先快照原始存储，再装载和兼容旧数据 */
   loadAllData();
-  guardData();
-  purgeDemoData();
   render();
-  initCloudSync();
   try{
     if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
       var swCtlAtLoad = !!navigator.serviceWorker.controller;

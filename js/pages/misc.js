@@ -149,9 +149,6 @@ PAGES.about.render=function(el){
     +'<div class="about-hint">点「检查更新」；仍然不行就删掉主屏幕图标，用 Safari 重新打开一次再添加。</div></div>'
     +'<div class="card"><b style="font-size:15px">本机数据</b>'
     +'<div class="about-hint">题库 '+BANK.length+' 道 · 错题 '+WRONG.length+' 条 · 收藏 '+FAV.length+' 条 · 练习记录 '+RECS.length+' 次</div>'
-    +'<div class="row" style="margin-top:10px">'
-    +'<button class="btn btn-ghost btn-sm" data-act="backup.export">导出备份</button>'
-    +'<button class="btn btn-ghost btn-sm" data-act="backup.importPick">导入备份</button></div></div>'
     +'<div class="card"><b style="font-size:15px">意见反馈</b>'
     +'<div class="about-hint">题灵录是本地单机应用，没有服务器收反馈。遇到问题请点下面复制诊断信息，连同截图一起发给开发者。</div>'
     +'<div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" data-act="about.diag">复制诊断信息</button></div></div>'
@@ -230,94 +227,6 @@ ACTIONS['about.check']=async()=>{
 };
 
 /* ================= 同步设置 ================= */
-PAGES.sync={title:'同步设置'};
-PAGES.sync.render=function(el){
-  const saved=lsGet(K.cloudUrl)||'';
-  const last=parseInt(lsGet(K.cloudTime)||'0',10);
-  el.innerHTML=topbarHTML('同步设置')
-    +'<div class="card">'
-    +'<label class="fl">题库地址（JSON）</label>'
-    +'<input id="sync-url" value="'+esc(saved||CLOUD_DEFAULT)+'" placeholder="'+esc(CLOUD_DEFAULT)+'">'
-    +'<div class="row" style="margin-top:12px">'
-    +'<button class="btn btn-plain" data-act="sync.test">测试连接</button>'
-    +'<button class="btn btn-primary" data-act="sync.save">保存设置</button></div>'
-    +'<div class="row" style="margin-top:10px">'
-    +'<button class="btn btn-ghost btn-sm" data-act="sync.pull">立即从远端同步（会替换本地题库）</button></div>'
-    +'<div class="file-note">保存地址后：<b>本地题库为空时</b>会自动拉取一次（换新设备很方便）；'
-    +'本地已有题库则不再自动覆盖，需要时点上面的「立即同步」。'
-    +'题目上的笔记、标记、材料都存在本地题目里，远端替换会一并替换掉，请谨慎使用。'
-    +(last?('上次成功同步：'+new Date(last).toLocaleString()):'尚未同步过。')+'</div>'
-    +'</div>';
-};
-ACTIONS['sync.test']=async()=>{
-  const url=($id('sync-url').value||'').trim();
-  if(!url){toast('请输入题库地址','warn');return;}
-  toast('正在测试连接…');
-  try{
-    const r=await fetchCloud(url,8000);
-    const n=Array.isArray(r)?r.length:(r.questions?r.questions.length:0);
-    toast('连接成功，远端题库 '+n+' 道','ok');
-  }catch(e){toast('连接失败：'+(e.message||e),'err');}
-};
-ACTIONS['sync.save']=()=>{
-  const url=($id('sync-url').value||'').trim();
-  if(url&&url!==CLOUD_DEFAULT)lsSet(K.cloudUrl,url);else lsDel(K.cloudUrl);
-  toast('同步设置已保存','ok');
-};
-ACTIONS['sync.pull']=()=>{
-  const inp=$id('sync-url');
-  const url=(lsGet(K.cloudUrl)||(inp&&inp.value)||'').trim();
-  if(!url){toast('请先填写题库地址','warn');return;}
-  qtConfirm({title:'从远端同步',
-    msg:'将用远端题库替换本地题库（本地现有 '+BANK.length+' 道）。\n题目上的笔记、颜色标记、材料会一并被替换。确定同步？',
-    okText:'同步',danger:true,
-    onOk:async()=>{
-      toast('正在同步…');
-      try{
-        const j=await fetchCloud(url,15000);
-        applyCloudData(j);
-        loadWrong();loadFav();
-        toast('已同步，共 '+BANK.length+' 道','ok');
-        render();
-      }catch(e){toast('同步失败：'+(e.message||e),'err');}
-    }});
-};
-async function fetchCloud(url,timeout){
-  const c=new AbortController();
-  const to=setTimeout(()=>c.abort(),timeout||10000);
-  try{
-    const r=await fetch(url,{signal:c.signal});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    return await r.json();
-  }finally{clearTimeout(to);}
-}
-function applyCloudData(j){
-  const qs=Array.isArray(j)?j:(j.questions||[]);
-  if(!Array.isArray(qs)||!qs.length)throw new Error('远端数据中没有题目');
-  BANK=qs.map(q=>normQuestion(q,0));
-  PAPERS=Array.isArray(j.papers)?j.papers:[];
-  saveBank();
-  lsSet(K.cloudTime,String(Date.now()));
-  lsSet(K.cloudCache,JSON.stringify(j));
-}
-function initCloudSync(){
-  const url=lsGet(K.cloudUrl);
-  if(!url)return;
-  /* 本地已有题库就绝不自动替换：远端是整份覆盖，而笔记/标记/材料都挂在题目对象上，
-     自动覆盖等于把它们抹掉（连不上时用旧缓存覆盖更糟）。只有新设备才自动拉一次。 */
-  if(BANK.length)return;
-  fetchCloud(url).then(j=>{
-    applyCloudData(j);render();
-  }).catch(()=>{
-    if(BANK.length)return;
-    const cache=lsJson(K.cloudCache,null);
-    if(cache){
-      try{applyCloudData(cache);render();}catch(e){}
-    }
-    showBanner('当前使用缓存题库（点击关闭）');
-  });
-}
-
 /* ================= 学习报告 ================= */
 PAGES.report={title:'学习报告'};
 PAGES.report.render=function(el){
@@ -358,24 +267,9 @@ PAGES.report.render=function(el){
       hm.push('<i class="l'+lv+'" title="'+k+'　'+n+' 题"></i>');
     }
   }
-  /* 本周任务 */
-  const wc=weekCount(),wg=weekGoal();
-  const wkPct=wg>0?Math.min(100,Math.round(wc*100/wg)):0;
   const weak=rows.filter(r=>r.obj>=5).slice(0,3);
   const tip=weak.length?('最需要补：'+weak.map(r=>esc(r.m)+'（'+r.acc+'%，'+r.obj+' 题）').join('、')):'多刷一些题，报告会更有参考价值。';
   el.innerHTML=topbarHTML('学习报告')
-    +'<div class="rp-hero">'
-    +'<div class="rp-cell"><b>'+t.done+'</b><span>累计做题</span></div>'
-    +'<div class="rp-cell"><b>'+t.acc+'</b><span>总正确率</span></div>'
-    +'<div class="rp-cell"><b>'+streak+'</b><span>连续天数</span></div>'
-    +'</div>'
-    +'<div class="card" data-act="report.weekGoal" style="cursor:pointer">'
-    +'<div class="row"><b style="font-size:15px;flex:1">本周任务</b>'
-    +'<span class="muted">'+(wg>0?(wc+' / '+wg+' 题'):'点击设置目标')+'</span></div>'
-    +(wg>0?('<div class="wk-bar"><i style="width:'+wkPct+'%"></i></div>'
-      +'<div class="file-note">'+(wc>=wg?'已完成本周目标，继续保持':'还差 '+(wg-wc)+' 题')+'</div>')
-      :'<div class="file-note">设一个每周题量，坚持比冲量更重要。</div>')
-    +'</div>'
     +'<div class="card"><b style="font-size:15px">近 7 天做题量</b>'
     +'<div class="rp-days">'+bars+'</div></div>'
     +'<div class="card"><b style="font-size:15px">近 12 周打卡</b>'
@@ -579,24 +473,6 @@ ACTIONS['report.ai']=async()=>{
   }
 };
 
-ACTIONS['report.weekGoal']=()=>{
-  const cur=weekGoal();
-  $id('modal-root').innerHTML='<div class="mask" data-act="modal.mask"><div class="modal" data-stop="1">'
-    +'<h3>本周目标</h3>'
-    +'<div class="file-note" style="margin:0 0 10px">本周一到现在已完成 <b>'+weekCount()+'</b> 题</div>'
-    +'<input id="wk-goal-in" type="number" min="0" max="5000" inputmode="numeric" value="'+(cur||'')+'" placeholder="如 300（留空=不设目标）">'
-    +'<div class="m-btns"><button class="btn btn-plain" data-act="modal.cancel">取消</button>'
-    +'<button class="btn btn-primary" data-act="report.weekGoalSave">保存</button></div>'
-    +'</div></div>';
-  modalOpen=true;
-  setTimeout(function(){const i=$id('wk-goal-in');if(i){i.focus();i.select();}},60);
-};
-ACTIONS['report.weekGoalSave']=()=>{
-  const i=$id('wk-goal-in');
-  const n=Math.max(0,Math.min(5000,parseInt((i&&i.value)||'0',10)||0));
-  setWeekGoal(n);closeModal();render();
-  toast(n>0?('本周目标已设为 '+n+' 题'):'已取消本周目标','ok');
-};
 /* ================= 题库搜索 ================= */
 PAGES.search={title:'搜索题库'};
 PAGES.search.render=function(el,params){
@@ -648,7 +524,7 @@ ACTIONS['search.run']=()=>{
 };
 ACTIONS['search.go']=d=>{
   const q=bankQ(d.id);if(!q)return;
-  goTo('mistakePractice',{module:q.module,only:[q.id],label:'搜索结果',soft:'1'});
+  goTo('setPractice',{module:q.module,only:[q.id],label:'搜索结果',soft:'1'});
 };
 document.addEventListener('keydown',e=>{
   if(e.key!=='Enter')return;

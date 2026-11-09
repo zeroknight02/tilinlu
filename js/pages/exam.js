@@ -30,6 +30,22 @@ document.addEventListener('change',e=>{
   const fn=CHANGES[t.dataset.chg||t.dataset.f];fn&&fn(t.dataset,t);
 });
 
+/* ================= 组卷配置页共用组件 ================= */
+/* 考试类型下拉：限时训练 / 自动组卷 / 组卷并保存 三处一样 */
+function examTypeSelectHTML(exam,chg){
+  return '<label class="fl">考试类型</label>'
+    +'<select data-chg="'+chg+'">'+allExamTypes().map(t=>'<option'+(t===exam?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select>';
+}
+/* 每模块题量行：attr 是数字输入框的 data 属性名（acnum / pem） */
+function moduleCountRowsHTML(exam,counts,attr,hint){
+  return examMods(exam).map(m=>{
+    const h=hint?hint(m):'';
+    return '<div class="card card-sm"><div class="row"><div style="flex:1;min-width:120px">'+esc(m)
+      +'<div class="muted">题库共 '+availCount(exam,m)+' 题'+(h||'')+'</div></div>'
+      +'<input type="number" min="0" max="200" inputmode="numeric" style="width:96px" value="'+(parseInt(counts[m]||'0',10)||0)+'" data-'+attr+'="'+esc(m)+'"></div></div>';
+  }).join('');
+}
+
 /* ================= 限时训练 · 配置页 ================= */
 let TC={exam:'国考',module:'政治理论',qty:20,mins:25,pass:60};
 PAGES.timedConfig={title:'限时训练 · 配置'};
@@ -38,8 +54,7 @@ PAGES.timedConfig.render=function(el){
   if(!mods.includes(TC.module))TC.module=mods[0];
   el.innerHTML=topbarHTML('限时训练 · 配置')
     +'<div class="card">'
-    +'<label class="fl">考试类型</label>'
-    +'<select data-chg="tc.exam">'+allExamTypes().map(t=>'<option'+(t===TC.exam?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select>'
+    +examTypeSelectHTML(TC.exam,'tc.exam')
     +'<label class="fl">模块</label>'
     +'<select data-chg="tc.mod">'+mods.map(m=>'<option'+(m===TC.module?' selected':'')+'>'+esc(m)+'</option>').join('')+'</select>'
     +'<div class="grid2">'
@@ -84,18 +99,12 @@ document.addEventListener('input',e=>{
 let AUTO={exam:'国考',counts:{},mins:null,timeTouched:false,pass:60};
 PAGES.autoConfig={title:'自动组卷 · 配置'};
 PAGES.autoConfig.render=function(el){
-  const mods=examMods(AUTO.exam);
-  let rows='';
-  mods.forEach(m=>{
-    const hint=(m==='判断推理')?'（含图形 / 定义 / 类比 / 逻辑四个子类，按一个模块抽题）':'';
-    rows+='<div class="card card-sm"><div class="row"><div style="flex:1;min-width:130px">'+esc(m)
-      +'<div class="muted">题库共 '+availCount(AUTO.exam,m)+' 题'+hint+'</div></div>'
-      +'<input type="number" min="0" max="200" inputmode="numeric" style="width:100px" value="'+(AUTO.counts[m]||0)+'" data-acnum="'+esc(m)+'"></div></div>';
-  });
+  const rows=moduleCountRowsHTML(AUTO.exam,AUTO.counts,'acnum',
+    m=>m==='判断推理'?'（含图形 / 定义 / 类比 / 逻辑四个子类，按一个模块抽题）':'');
   const total=autoTotal();
   el.innerHTML=topbarHTML('自动组卷 · 配置')
-    +'<div class="card"><label class="fl">考试类型</label>'
-    +'<select data-chg="ac.exam">'+allExamTypes().map(t=>'<option'+(t===AUTO.exam?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select>'
+    +'<div class="card">'
+    +examTypeSelectHTML(AUTO.exam,'ac.exam')
     +((SCORE_RULES[AUTO.exam]&&SCORE_RULES[AUTO.exam].levels)?'<label class="fl">卷别（影响计分）</label><select data-chg="ac.level">'+SCORE_RULES[AUTO.exam].levels.map(l=>'<option'+(l===(AUTO.level||defLevel(AUTO.exam))?' selected':'')+'>'+l+'</option>').join('')+'</select>':'')
     +'<div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-act="score.open" data-n="'+esc(AUTO.exam)+'">'
     +(hasScoreOverride(AUTO.exam)?'调整分值（已自定义）':'调整分值')+'</button></div>'
@@ -153,7 +162,7 @@ PAGES.paperList.render=function(el){
   const papers=PAPERS.filter(p=>p.exam===PL.exam);
   let list='';
   if(!papers.length){
-    list='<div class="card miss-empty">该考试类型下暂无套卷<br><span class="muted">点下方「新建套卷」，按模块选题量即可生成</span></div>';
+    list='<div class="card miss-empty">该考试类型下暂无套卷<br><span class="muted">点下方「组卷并保存」，按模块选题量生成；导入的真题卷会直接出现在这里</span></div>';
   }
   papers.forEach(p=>{
     const ids=(p.questionIds||[]).filter(id=>bankQ(id));
@@ -166,9 +175,9 @@ PAGES.paperList.render=function(el){
       +(empty?'⏳':'›')+'</div></div>';
   });
   el.innerHTML=topbarHTML('真题训练')
-    +'<div class="card"><label class="fl">考试类型</label>'
-    +'<select data-chg="pl.exam">'+allExamTypes().map(t=>'<option'+(t===PL.exam?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></div>'
-    +'<button class="btn btn-primary" style="width:100%;margin:2px 0 12px" data-act="paper.new">+ 新建套卷</button>'
+    +'<div class="card">'+examTypeSelectHTML(PL.exam,'pl.exam')+'</div>'
+    +'<button class="btn btn-primary" style="width:100%;margin:2px 0 12px" data-act="paper.new">+ 组卷并保存</button>'
+    +'<div class="file-note" style="margin:-4px 4px 10px">「自动组卷」不保存直接考；这里组好的卷子会存进列表，之后可反复练。</div>'
     +list;
 };
 CHANGES['pl.exam']=(d,t)=>{PL.exam=t.value;render();};
@@ -182,19 +191,13 @@ function peCounts(p){
 PAGES.paperEdit={title:'编辑套卷'};
 PAGES.paperEdit.render=function(el){
   const mods=examMods(PE.exam);
-  let rows='';
-  mods.forEach(m=>{
-    rows+='<div class="card card-sm"><div class="row"><div style="flex:1;min-width:120px">'+esc(m)
-      +'<div class="muted">题库共 '+availCount(PE.exam,m)+' 题</div></div>'
-      +'<input type="number" min="0" max="200" inputmode="numeric" style="width:96px" value="'+(parseInt(PE.counts[m]||'0',10)||0)+'" data-pem="'+esc(m)+'"></div></div>';
-  });
+  const rows=moduleCountRowsHTML(PE.exam,PE.counts,'pem');
   const total=mods.reduce((a,m)=>a+(parseInt(PE.counts[m]||'0',10)||0),0);
-  el.innerHTML=topbarHTML(PE.id?'编辑套卷':'新建套卷')
+  el.innerHTML=topbarHTML(PE.id?'编辑套卷':'组卷并保存')
     +'<div class="card"><label class="fl">套卷标题</label>'
     +'<input data-pe="title" maxlength="40" value="'+esc(PE.title)+'" placeholder="如：2025 国考行测真题（副省级）">'
     +'<div class="row" style="margin-top:10px;flex-wrap:nowrap">'
-    +'<div style="flex:1;min-width:0"><label class="fl">考试类型</label>'
-    +'<select data-chg="pe.exam">'+allExamTypes().map(t=>'<option'+(t===PE.exam?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></div>'
+    +'<div style="flex:1;min-width:0">'+examTypeSelectHTML(PE.exam,'pe.exam')+'</div>'
     +'<div style="width:110px;flex:none"><label class="fl">时长（分钟）</label>'
     +'<input type="number" min="1" max="300" data-pe="minutes" value="'+(PE.minutes||90)+'"></div>'
     +'</div></div>'
@@ -233,7 +236,14 @@ ACTIONS['paper.save']=()=>{
     total+=n;picked.push({m:m,n:n});
   }
   let ids=[];
-  if(total>0){
+  const original=PE.id?PAPERS.find(x=>x.id===PE.id):null;
+  const originalCounts=original?peCounts(original):{};
+  const unchanged=original&&original.exam===PE.exam&&
+    Array.from(new Set(Object.keys(originalCounts).concat(Object.keys(PE.counts)))).every(m=>
+      (originalCounts[m]||0)===(parseInt(PE.counts[m]||'0',10)||0));
+  if(unchanged){
+    ids=(original.questionIds||[]).slice();   /* 只改标题或时长，不重新随机替换真题 */
+  }else if(total>0){
     picked.forEach(p=>{pickQuestions(PE.exam,p.m,p.n).forEach(q=>ids.push(q.id));});
   }else if(PE.id){
     const old=PAPERS.find(x=>x.id===PE.id);

@@ -186,10 +186,8 @@ PAGES.studyImport.render=function(el){
     +'<textarea rows="12" data-bkimp="draft" placeholder="支持“第X章 / 第X节”“一、”“1.”“【考点】”“# 标题”等章节写法，保存时自动拆分为学习小节">'+esc(BKIMP.draft)+'</textarea>'
     +'<label class="fl">或从文件读取（JSON 直接导入整本，其他格式读入文本框）</label>'
     +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="bkimp.file">'
-    +'<div class="row" style="margin-top:8px"><button class="btn btn-plain btn-sm" data-act="bkimp.word">重解析 Word</button>'
-    +'<button class="btn btn-plain btn-sm" data-act="bkimp.pdf">重解析 PDF</button></div>'
     +'<div class="file-note" id="file-status">'+esc(BKIMP.fileStatus||'')+'</div>'
-    +'<div class="file-note">支持 JSON / CSV / TXT / MD / Excel / Word / PDF；除 JSON 外都会读成文本放进上面的框，检查后再保存。</div>'
+    +'<div class="file-note">支持 JSON / CSV / TXT / MD / Markdown；除 JSON 外都会读成文本放进上面的框，检查后再保存。</div>'
     +'<details style="margin-top:6px"><summary class="muted" style="cursor:pointer;font-size:12.5px">查看 JSON 格式</summary>'
     +'<pre style="font-size:11px;line-height:1.6;background:var(--line);padding:10px;border-radius:10px;overflow:auto;white-space:pre-wrap;margin-top:6px">'+esc(STUDY_JSON_SAMPLE)+'</pre>'
     +'<div class="file-note">cat / module 不填就用上面选的；没写 sections 但写了 content，会按章节自动拆分；最外层是数组则一次导入多本。同名同模块的教材会自动跳过。</div>'
@@ -276,50 +274,6 @@ CHANGES['bkimp.file']=async(d,t)=>{
     toast(msg,'err');
   }finally{
     t.value='';
-  }
-};
-ACTIONS['bkimp.word']=async()=>{
-  const st=$id('file-status');
-  if(!BKIMP.file){toast('请先选择 .docx 文件','warn');return;}
-  if(!/\.docx$/i.test(BKIMP.file.name)){toast('仅支持 .docx（老式 .doc 请另存为 .docx）','err');return;}
-  if(st)st.textContent='正在解析…';
-  try{
-    await loadScript(MAMMOTH_CDN,()=>window.mammoth);
-    const buf=await fileToArrayBuffer(BKIMP.file);
-    const r=await window.mammoth.extractRawText({arrayBuffer:buf});
-    BKIMP.draft=(r&&r.value)||'';
-    if(!BKIMP.title.trim())BKIMP.title=BKIMP.file.name.replace(/\.docx$/i,'');
-    if(st)st.textContent='解析成功，共 '+BKIMP.draft.length+' 字';
-    render();
-  }catch(e){
-    if(st)st.textContent='解析失败：'+(e.message||e)+'。可复制内容后用粘贴方式导入。';
-    toast('Word 解析失败','err');
-  }
-};
-ACTIONS['bkimp.pdf']=async()=>{
-  const st=$id('file-status');
-  if(!BKIMP.file){toast('请先选择 PDF 文件','warn');return;}
-  if(!/\.pdf$/i.test(BKIMP.file.name)){toast('请选择 PDF 文件','warn');return;}
-  if(st)st.textContent='正在解析…';
-  try{
-    await loadScript(PDFJS_CDN,()=>window.pdfjsLib);
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;
-    const buf=await fileToArrayBuffer(BKIMP.file);
-    const doc=await window.pdfjsLib.getDocument({data:buf}).promise;
-    let text='';
-    for(let pg=1;pg<=doc.numPages;pg++){
-      const page=await doc.getPage(pg);
-      const tc=await page.getTextContent();
-      text+=tc.items.map(it=>it.str).join(' ')+'\n';
-    }
-    if(text.replace(/\s/g,'').length<10)throw new Error('未提取到文字层（可能是扫描版 PDF）');
-    BKIMP.draft=text;
-    if(!BKIMP.title.trim())BKIMP.title=BKIMP.file.name.replace(/\.pdf$/i,'');
-    if(st)st.textContent='解析成功，共 '+text.length+' 字';
-    render();
-  }catch(e){
-    if(st)st.textContent='解析失败：'+(e.message||e)+'。可复制文字后用粘贴方式导入。';
-    toast('PDF 解析失败','err');
   }
 };
 ACTIONS['bkimp.save']=()=>{

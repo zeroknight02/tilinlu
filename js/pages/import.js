@@ -1,8 +1,8 @@
 /* 题灵录 · pages/import */
 /* ================= 导入题库 ================= */
 /* 三个导入入口共用的文件类型清单 */
-const IMP_ACCEPT_ALL='.json,.csv,.txt,.md,.markdown,.xlsx,.xls,.docx,.pdf,application/json,text/plain,text/csv';
-let IMP={draft:'',jsonDraft:'',aiText:'',tab:'paste',file:null,mode:null,fileStatus:'',qFile:null,aFile:null,qStatus:'',aStatus:'',xFile:null,xStatus:'',oFiles:null,oStatus:'',mdDraft:'',mdFile:null,mdStatus:''};
+const IMP_ACCEPT_ALL='.json,.csv,.txt,.md,.markdown,application/json,text/plain,text/csv';
+let IMP={draft:'',jsonDraft:'',aiText:'',tab:'paste',qFile:null,aFile:null,qStatus:'',aStatus:'',mdFile:null};
 function deviceMode(){
   const f=sessionStorage.getItem('qt_force_mode');if(f)return f;
   const coarse=window.matchMedia&&matchMedia('(pointer: coarse)').matches;
@@ -14,19 +14,6 @@ document.addEventListener('input',e=>{
   const t=e.target.closest('[data-imp]');if(!t)return;
   IMP[t.dataset.imp]=t.value;
 });
-function loadScript(url,check){
-  return new Promise((res,rej)=>{
-    if(check&&check())return res();
-    const s=document.createElement('script');
-    s.src=url;s.onload=()=>res();
-    s.onerror=()=>rej(new Error('CDN 加载失败（需联网）：'+url));
-    document.head.appendChild(s);
-  });
-}
-function fileToArrayBuffer(f){
-  if(f.arrayBuffer)return f.arrayBuffer();
-  return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsArrayBuffer(f);});
-}
 
 /* ---- 解析器：JSON → 分题块式 → 行式 → 兜底整段一题 ---- */
 function parseAnsStr(s){
@@ -214,12 +201,37 @@ function parseImportJSON(text){
   });
   return{items,papers,images};
 }
+/* 本地 CSV：支持引号、转义双引号、逗号及制表符，不依赖已删除的 Excel 组件。 */
+function csvQuestionRows(text){
+  const first=String(text||'').split(/\r?\n/,1)[0];
+  const sep=first.indexOf('\t')>=0?'\t':',';
+  if(first.indexOf(sep)<0)return null;
+  const rows=[];let row=[],cell='',quoted=false;
+  const src=String(text||'').replace(/^\uFEFF/,'');
+  for(let i=0;i<src.length;i++){
+    const c=src[i];
+    if(c==='"'){
+      if(quoted&&src[i+1]==='"'){cell+='"';i++;}
+      else quoted=!quoted;
+    }else if(!quoted&&c===sep){row.push(cell);cell='';}
+    else if(!quoted&&(c==='\n'||c==='\r')){
+      if(c==='\r'&&src[i+1]==='\n')i++;
+      row.push(cell);if(row.some(x=>x.trim()))rows.push(row);row=[];cell='';
+    }else cell+=c;
+  }
+  if(quoted)throw new Error('CSV 引号未闭合');
+  row.push(cell);if(row.some(x=>x.trim()))rows.push(row);
+  if(!rows.length||!rows[0].some(x=>/^(题干|题目|问题|q)$/i.test(x.trim())))return null;
+  return rows;
+}
 function autoParseText(text){
   const raw=String(text||'').trim();
   if(!raw)return{items:[],papers:[]};
   if(raw[0]==='['||raw[0]==='{'){
     try{return parseImportJSON(raw);}catch(e){/* 继续用文本规则 */}
   }
+  const csv=csvQuestionRows(raw);
+  if(csv){const items=xlsxToItems(csv);if(items.length)return{items:items,papers:[]};}
   /* Markdown：先试表格（含题干列），再转纯文本走常规解析 */
   const md=isMarkdown(raw);
   if(md){
@@ -249,22 +261,20 @@ function autoParseIntoPreview(text){
 /* ---- 导入页 ---- */
 PAGES.importPage={title:'导入题库'};
 const ANY_FILE_CARD='<div class="card"><b style="font-size:14px">任意格式直接导入</b>'
-  +'<div class="file-note" style="margin:4px 0 8px">选文件即可，按扩展名自动选解析方式：JSON / CSV / TXT / MD / Excel / Word / PDF</div>'
+  +'<div class="file-note" style="margin:4px 0 8px">选文件即可，支持 JSON / CSV / TXT / MD / Markdown，按扩展名自动识别</div>'
   +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
   +'<div class="ai-status" id="any-status"></div></div>';
 PAGES.importPage.render=function(el){
-  const mode=IMP.mode=deviceMode();
-  const tabs=[['paste','粘贴文本'],['md','Markdown'],['json','JSON'],['word','Word'],['pdf','PDF'],['dual','双文件'],['xlsx','Excel'],['ocr','OCR 扫描件'],['ai','AI 解析']];
+  const mode=deviceMode();
+  const tabs=[['paste','粘贴文本'],['dual','双文件'],['ai','AI 解析']];
   let body='';
   const pasteCard='<div class="card">'
     +'<label class="fl">粘贴题目文本</label>'
-    +'<textarea rows="10" data-imp="draft" placeholder="支持分题块式 / 行式简洁 / JSON，粘贴后点击自动识别">'+esc(IMP.draft)+'</textarea>'
+    +'<div class="file-note" style="margin:-4px 0 8px">JSON 和 Markdown 直接粘进来即可，会自动识别；也可以在上面选文件。</div>'
+    +'<textarea rows="10" data-imp="draft" placeholder="直接粘贴：JSON 题库 / Markdown 表格 / Markdown 正文 / 分题块式 / 行式简洁，点击下方按钮自动识别">'+esc(IMP.draft)+'</textarea>'
     +'<div class="row" style="margin-top:12px">'
     +'<button class="btn btn-primary btn-big" data-act="imp.auto">自动识别并预览</button>'
     +'<button class="btn btn-ghost" data-act="imp.examples">查看格式示例</button></div>'
-    +'<label class="fl" style="margin-top:16px">或选择 JSON 题库文件（.json）</label>'
-    +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
-    +'<div class="ai-status" id="json-file-status"></div>'
     +'<div class="file-note">自动匹配顺序：JSON → Markdown 表格 → Markdown 正文 → 分题块式（题号 /【答案】/【解析】/ A.B.C.D.）→ 行式简洁 → 整段一题。兼容全角半角、A./A、/A．、答案：/【答案】、ABC / A,B,C 等写法，Markdown 的 #、**、- 等标记会自动去掉，全部解析在本地完成。</div></div>';
   if(mode==='mobile'){
     body=pasteCard;
@@ -272,58 +282,16 @@ PAGES.importPage.render=function(el){
     let tabbar='<div class="tabbar">'+tabs.map(t=>'<div class="tb'+(IMP.tab===t[0]?' on':'')+'" data-act="imp.tab" data-t="'+t[0]+'">'+t[1]+'</div>').join('')+'</div>';
     let pane='';
     if(IMP.tab==='paste')pane=pasteCard;
-    else if(IMP.tab==='md'){
-      pane='<div class="card"><label class="fl">选择 Markdown 文件（.md / .markdown / .txt）</label>'
-        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
-        +'<div class="ai-status" id="md-status">'+esc(IMP.mdStatus||'')+'</div>'
-        +'<label class="fl" style="margin-top:14px">或直接粘贴 Markdown 内容</label>'
-        +'<textarea rows="8" data-imp="mdDraft" placeholder="## 1. 我国的根本政治制度是（ ）&#10;&#10;- A. 人民代表大会制度&#10;- B. 政治协商制度&#10;&#10;**答案：** A&#10;**解析：** 人民代表大会制度是我国的根本政治制度。">'+esc(IMP.mdDraft)+'</textarea>'
-        +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.md">解析并预览</button>'
-        +'<div class="file-note">先去掉 #、**、-、表格竖线等标记，再按题号 / 选项 / 答案 / 解析识别；不带题号的标题会被当作章节分隔。表格形式的题库（表头含「题干」列）按列解析，和 Excel 一致。</div></div>';
-    }
-    else if(IMP.tab==='json'){
-      pane='<div class="card"><label class="fl">粘贴 JSON</label>'
-        +'<textarea rows="10" data-imp="jsonDraft" placeholder=\'{"questions":[…],"papers":[…]}\'>'+esc(IMP.jsonDraft)+'</textarea>'
-        +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.json">解析 JSON 并预览</button>'
-        +'<label class="fl" style="margin-top:16px">或选择 JSON 文件（大批量推荐）</label>'
-        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
-        +'<div class="ai-status" id="json-file-status"></div>'
-        +'<div class="file-note">支持纯题目数组，或含 questions / papers 的对象；字段说明见“查看格式示例”。超过 300 题会跳过逐条预览直接导入。</div></div>';
-    }else if(IMP.tab==='word'){
-      pane='<div class="card"><label class="fl">选择 Word 文档（.docx）</label>'
-        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
-        +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.word">解析并预览</button>'
-        +'<div class="file-note">按需从 CDN 加载 mammoth（'+MAMMOTH_CDN+'），文件只在本地解析，不会上传。老式 .doc 或加密文档请改用粘贴文本。</div>'
-        +'<div class="ai-status" id="file-status">'+esc(IMP.fileStatus||'')+'</div></div>';
-    }else if(IMP.tab==='pdf'){
-      pane='<div class="card"><label class="fl">选择 PDF 文件</label>'
-        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
-        +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.pdf">解析并预览</button>'
-        +'<div class="file-note">按需从 CDN 加载 pdf.js（'+PDFJS_CDN+'），仅提取文字层；扫描版 / 图片型 PDF 可改用「OCR 扫描件」标签。</div>'
-        +'<div class="ai-status" id="file-status">'+esc(IMP.fileStatus||'')+'</div></div>';
-    }else if(IMP.tab==='dual'){
+    else if(IMP.tab==='dual'){
       pane='<div class="card"><b>双文件导入：题目文件 + 答案文件</b>'
-        +'<label class="fl" style="margin-top:10px">① 题目文件（.docx / .pdf / .txt / .md）</label>'
-        +'<input type="file" accept=".docx,.pdf,.txt,.md" data-chg="imp.qfile">'
+        +'<label class="fl" style="margin-top:10px">① 题目文件（.txt / .md / .csv）</label>'
+        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.qfile">'
         +'<div class="ai-status" id="qfile-status">'+esc(IMP.qStatus||'')+'</div>'
-        +'<label class="fl" style="margin-top:10px">② 答案文件（.docx / .pdf / .txt / .md，形如「1. A」每行一条）</label>'
-        +'<input type="file" accept=".docx,.pdf,.txt,.md" data-chg="imp.afile">'
+        +'<label class="fl" style="margin-top:10px">② 答案文件（.txt / .md / .csv，形如「1. A」每行一条）</label>'
+        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.afile">'
         +'<div class="ai-status" id="afile-status">'+esc(IMP.aStatus||'')+'</div>'
         +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.dual">提取并匹配答案 → 预览</button>'
-        +'<div class="file-note">匹配规则：先按答案文件里的题号对号入座；若答案文件题号不连续，则按顺序逐条匹配未识别答案的客观题。适用于「题目册 + 答案册」分开的文档，全部本地解析。</div></div>';
-    }else if(IMP.tab==='xlsx'){
-      pane='<div class="card"><label class="fl">选择 Excel 文件（.xlsx / .xls / .csv）</label>'
-        +'<input type="file" accept="'+IMP_ACCEPT_ALL+'" data-chg="imp.anyfile">'
-        +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.xlsx">解析并预览</button>'
-        +'<div class="ai-status" id="xfile-status">'+esc(IMP.xStatus||'')+'</div>'
-        +'<div class="file-note">第一行需为表头，支持列名：题干（必填）、选项A~选项H（或 A~H）、答案、解析、题型、模块、子类型、考试类型、科目。按需从 CDN 加载 SheetJS，本地解析。</div></div>';
-    }else if(IMP.tab==='ocr'){
-      pane='<div class="card"><b>OCR 扫描件识别（扫描版 PDF / 图片）</b>'
-        +'<label class="fl" style="margin-top:10px">选择扫描版 PDF 或图片（.pdf / .png / .jpg，可多选）</label>'
-        +'<input type="file" accept=".pdf,image/png,image/jpeg" multiple data-chg="imp.ofile">'
-        +'<button class="btn btn-primary" style="margin-top:12px" data-act="imp.ocr">开始识别 → 预览</button>'
-        +'<div class="ai-status" id="ocr-status">'+esc(IMP.oStatus||'')+'</div>'
-        +'<div class="file-note">按需从 CDN 加载 Tesseract（中文简体+英文，首次需下载几 MB 语言包，请保持联网）；扫描 PDF 会逐页渲染成图片再识别，耗时较长，建议先试 1-2 页。识别完成后请人工核对再导入。</div></div>';
+        +'<div class="file-note">匹配规则：先按答案文件里的题号对号入座；若答案文件题号不连续，则按顺序逐条匹配未识别答案的客观题。适用于「题目册 + 答案册」分开的纯文本，全部本地解析。</div></div>';
     }else{
       const cfg=lsJson(K.ai,{});
       pane='<div class="card"><b>AI 设置（仅电脑端显示）</b>'
@@ -380,7 +348,7 @@ function importParsed(r){
     const okN=r.items.filter(i=>i.ok&&!i.skip).length;
     const pN=(r.papers||[]).length;
     qtConfirm({title:'大批量导入',
-      msg:'识别到 '+r.items.length+' 题（可导入 '+okN+' 题）'+(pN?('、'+pN+' 套卷'):'')+'。\n逐条预览会让手机卡死，将直接合并导入。重复题目会全部保留，不会去重删除。',
+      msg:'识别到 '+r.items.length+' 题（可导入 '+okN+' 题）'+(pN?('、'+pN+' 套卷'):'')+'。\n逐条预览会让手机卡死，将直接合并导入。完全相同（含材料与配图）的题会复用已有题目；内容有差异时由你确认。套卷中的位置会保留。',
       okText:'直接导入',
       onOk:()=>{doMergeImport(r.items.filter(i=>i.ok&&!i.skip),r.papers||[],r.images||{});}});
     return;
@@ -390,74 +358,98 @@ function importParsed(r){
 /* 合并导入：用 id 索引做 O(n) 合并，避免几万题时 O(n²) 卡死 */
 /* ================= 去重：只有题干+选项+答案+解析全部一致才算重复 ================= */
 function qNormTxt(x){return String(x==null?'':x).replace(/\s+/g,' ').trim();}
-function qFingerprint(q){
-  return simpleHash([
-    qNormTxt(q.q),
-    (q.o||[]).map(qNormTxt).join('\u0001'),
-    Array.isArray(q.a)?q.a.join(','):String(q.a==null?'':q.a),
-    qNormTxt(q.e||'')
-  ].join('\u0002'));
+/* 同题必须包含同一份材料和配图；图形题不能只按通用题干去重。 */
+function qMediaKey(u){
+  if(typeof u!=='string')return '';
+  return u.charAt(0)==='@'?(IMG_TAB[u.slice(1)]||u):u;
+}
+function qStemKey(q){
+  return JSON.stringify([qNormTxt(q.q),qNormTxt(q.mat),
+    (q.imgs&&q.imgs.length?q.imgs:(q.img?[q.img]:[])).map(qMediaKey),
+    (q.oimg||[]).map(qMediaKey),qMediaKey(q.matImg)]);
+}
+function qContentKey(q){
+  return JSON.stringify([q.type,qStemKey(q),(q.o||[]).map(qNormTxt),
+    Array.isArray(q.a)?q.a:String(q.a==null?'':q.a),qNormTxt(q.e),
+    (q.eimgs||[]).map(qMediaKey)]);
+}
+function qFingerprint(q){return simpleHash(qContentKey(q));}
+function importImageRefs(items,images){
+  if(!images||typeof images!=='object')return items;
+  const map=Object.create(null);let changed=false;
+  Object.keys(images).forEach(key=>{
+    let use=key,n=2;
+    while(Object.prototype.hasOwnProperty.call(IMG_TAB,use)&&IMG_TAB[use]!==images[key])use=key+'-import'+n++;
+    map[key]=use;
+    if(!Object.prototype.hasOwnProperty.call(IMG_TAB,use)){IMG_TAB[use]=images[key];changed=true;}
+  });
+  if(changed)saveImgTab();
+  const ref=u=>typeof u==='string'&&u.charAt(0)==='@'&&map[u.slice(1)]?'@'+map[u.slice(1)]:u;
+  return items.map(it=>{
+    const q=Object.assign({},it.data);
+    q.img=ref(q.img);q.matImg=ref(q.matImg);
+    ['imgs','oimg','eimgs'].forEach(k=>{if(Array.isArray(q[k]))q[k]=q[k].map(ref);});
+    return Object.assign({},it,{data:q});
+  });
 }
 let DUP={items:[],papers:[],stat:null};
 function doMergeImport(items,papers,images){
-  if(images&&typeof images==='object'){
-    let added=0;
-    Object.keys(images).forEach(k=>{if(!IMG_TAB[k]){IMG_TAB[k]=images[k];added++;}});
-    if(added)saveImgTab();
-  }
+  items=importImageRefs(items,images);
   const idx=Object.create(null);
   BANK.forEach((q,i)=>{idx[q.id]=i;});
   /* 指纹 → 保留的那道题的 id（跨批、批内都用它） */
   const fpKeep=Object.create(null);
-  BANK.forEach(q=>{const f=qFingerprint(q);if(!fpKeep[f])fpKeep[f]=q.id;});
+  BANK.forEach(q=>{const f=qFingerprint(q);(fpKeep[f]=fpKeep[f]||[]).push(q.id);});
   const byStem=Object.create(null);
-  BANK.forEach(q=>{const k=qNormTxt(q.q);(byStem[k]=byStem[k]||[]).push(q);});
+  BANK.forEach(q=>{const k=qStemKey(q);(byStem[k]=byStem[k]||[]).push(q);});
 
   let add=0,skipExact=0;
   const conflicts=[];
   const remap=Object.create(null);   /* 被合并掉的 id → 保留下来的 id，用于修试卷引用 */
   uniqueBatchIds(items.map(it=>normQuestion(it.data,0))).forEach(nq=>{
-    const f=qFingerprint(nq);
-    /* 1) 完全一样（题干+选项+答案+解析）→ 自动跳过，并记下映射 */
-    if(fpKeep[f]){skipExact++;if(fpKeep[f]!==nq.id)remap[nq.id]=fpKeep[f];return;}
-    /* 2) id 撞上但内容变了 → 冲突 */
+    const f=qFingerprint(nq),stem=qStemKey(nq);
+    /* 哈希只筛候选，逐项确认内容一致，避免碰撞或不同图形被误合并。 */
+    const exact=(fpKeep[f]||[]).find(id=>qContentKey(BANK[idx[id]])===qContentKey(nq));
+    if(exact){skipExact++;if(exact!==nq.id)remap[nq.id]=exact;return;}
+    /* 2) id 撞上但内容变了 → 冲突（同 id 已在库里，卷子引用本来就有效） */
     const old=idx[nq.id]!=null?BANK[idx[nq.id]]:null;
     if(old){conflicts.push({incoming:nq,existing:old,why:'id'});return;}
-    /* 3) 题干一样但内容不同 → 冲突 */
-    const same=byStem[qNormTxt(nq.q)];
-    if(same&&same.length){conflicts.push({incoming:nq,existing:same[0],why:'stem'});return;}
+    /* 3) 题干一样但内容不同 → 冲突，含同一文件内部 */
+    const same=byStem[stem];
+    if(same&&same.length){
+      conflicts.push({incoming:nq,existing:same[0],why:'stem'});
+      /* 冲突题要等用户确认才入库；卷子引用先指到保留的那道，绝不缺题 */
+      if(same[0].id!==nq.id)remap[nq.id]=same[0].id;
+      return;
+    }
     idx[nq.id]=BANK.length;BANK.push(nq);add++;
-    fpKeep[f]=nq.id;
+    (fpKeep[f]=fpKeep[f]||[]).push(nq.id);
+    (byStem[stem]=byStem[stem]||[]).push(nq);   /* 批内后一道同题干的题也要能判冲突 */
   });
 
   const pidx=Object.create(null);
   PAPERS.forEach((p,i)=>{pidx[p.id]=i;});
   let pAdd=0;
-  (papers||[]).forEach(p=>{
-    if(!p||!p.id||!p.title)return;
+  const paperRefs=Object.create(null);
+  (papers||[]).forEach(source=>{
+    if(!source||!source.id||!source.title)return;
+    const p=Object.assign({},source);
+    p.questionIds=(source.questionIds||[]).map((id,pos)=>{
+      (paperRefs[id]=paperRefs[id]||[]).push({paperId:p.id,pos:pos});
+      return remap[id]||id;
+    });
     const k=pidx[p.id];
     if(k!=null)PAPERS[k]=p;else{pidx[p.id]=PAPERS.length;PAPERS.push(p);pAdd++;}
   });
-  /* 去重后把试卷里指向被合并题的 id 改到保留的那道，否则试卷会缺题 */
+  /* 只映射本次导入卷，不修改其他旧卷；保留每一题的位置和顺序。 */
   const remapN=Object.keys(remap).length;
-  if(remapN){
-    PAPERS.forEach(p=>{
-      if(!Array.isArray(p.questionIds))return;
-      const seen=Object.create(null),arr=[];
-      p.questionIds.forEach(id=>{
-        const t=remap[id]||id;
-        if(seen[t])return;
-        seen[t]=1;arr.push(t);
-      });
-      p.questionIds=arr;
-    });
-  }
   saveBank();
 
   const stat={add:add,skip:skipExact,pAdd:pAdd,conflicts:conflicts.length,remap:remapN};
   if(conflicts.length){
     DUP={items:conflicts.map(c=>({
            existingId:c.existing.id,
+           paperRefs:paperRefs[c.incoming.id]||[],
            existing:JSON.parse(JSON.stringify(c.existing)),
            incoming:JSON.parse(JSON.stringify(c.incoming)),
            ansTxt:{ex:dupAnsInput(c.existing),in:dupAnsInput(c.incoming)},
@@ -607,9 +599,12 @@ function applyDupItem(it){
   if(it.choice==='both'){
     if(k>=0)BANK[k]=it.existing;else BANK.push(it.existing);
     const inc=Object.assign({},it.incoming);
-    let nid=inc.id,n=2;
-    while(BANK.some(q=>q.id===nid)){nid=inc.id+'-dup'+n;n++;}
-    inc.id=nid;BANK.push(inc);it.result=inc;
+    let nid=it.bothId||inc.id,n=2;
+    if(!it.bothId)while(BANK.some(q=>q.id===nid)){nid=inc.id+'-dup'+n;n++;}
+    inc.id=nid;it.bothId=nid;
+    const previous=BANK.findIndex(q=>q.id===nid);
+    if(previous>=0)BANK[previous]=inc;else BANK.push(inc);
+    it.result=inc;
   }else if(it.choice==='take'){
     const inc=Object.assign({},it.incoming,{id:it.existingId});
     if(k>=0)BANK[k]=inc;else BANK.push(inc);
@@ -618,6 +613,10 @@ function applyDupItem(it){
     if(k>=0)BANK[k]=it.existing;else BANK.push(it.existing);
     it.result=it.existing;
   }
+  (it.paperRefs||[]).forEach(ref=>{
+    const paper=PAPERS.find(p=>p.id===ref.paperId);
+    if(paper&&Array.isArray(paper.questionIds))paper.questionIds[ref.pos]=it.result.id;
+  });
   it.applied=true;
 }
 ACTIONS['dup.choose']=d=>{
@@ -688,10 +687,7 @@ CHANGES['imp.anyfile']=async(d,t)=>{
       IMP.jsonDraft=await readText();
       say('');ACTIONS['imp.json']();return;
     }
-    if(/\.(xlsx|xls|csv)$/.test(name)){IMP.xFile=f;say('解析表格…');ACTIONS['imp.xlsx']();return;}
-    if(/\.docx$/.test(name)){IMP.file=f;say('解析 Word…');ACTIONS['imp.word']();return;}
-    if(/\.pdf$/.test(name)){IMP.file=f;say('解析 PDF…');ACTIONS['imp.pdf']();return;}
-    if(/\.(md|markdown|txt)$/.test(name)){IMP.mdFile=f;say('解析文本…');ACTIONS['imp.md']();return;}
+    if(/\.(md|markdown|txt|csv)$/.test(name)){IMP.mdFile=f;say('解析文本…');ACTIONS['imp.md']();return;}
     say('不支持的文件类型：'+f.name);
     toast('不支持的文件类型','err');
   }catch(e){
@@ -702,9 +698,9 @@ CHANGES['imp.anyfile']=async(d,t)=>{
   }
 };
 ACTIONS['imp.md']=async()=>{
-  const st=$id('md-status');const setSt=x=>{if(st)st.textContent=x;};
+  const setSt=x=>{};
   try{
-    let text=IMP.mdDraft||'';
+    let text='';
     if(IMP.mdFile){setSt('正在读取文件…');text=await extractFileText(IMP.mdFile);}
     if(!text||!text.trim()){toast('请先选择 .md 文件或粘贴内容','warn');return;}
     setSt('识别中…');
@@ -719,83 +715,13 @@ ACTIONS['imp.md']=async()=>{
 };
 CHANGES['imp.qfile']=(d,t)=>{IMP.qFile=(t.files&&t.files[0])||null;IMP.qStatus=IMP.qFile?('已选择：'+IMP.qFile.name):'';const st=$id('qfile-status');if(st)st.textContent=IMP.qStatus;};
 CHANGES['imp.afile']=(d,t)=>{IMP.aFile=(t.files&&t.files[0])||null;IMP.aStatus=IMP.aFile?('已选择：'+IMP.aFile.name):'';const st=$id('afile-status');if(st)st.textContent=IMP.aStatus;};
-CHANGES['imp.ofile']=(d,t)=>{IMP.oFiles=t.files?Array.from(t.files):[];IMP.oStatus=IMP.oFiles.length?(IMP.oFiles.length+' 个文件：'+IMP.oFiles.map(f=>f.name).join('、').slice(0,80)):'';const st=$id('ocr-status');if(st)st.textContent=IMP.oStatus;};
-ACTIONS['imp.word']=async()=>{
-  const st=$id('file-status');
-  if(!IMP.file){toast('请先选择 .docx 文件','warn');return;}
-  if(!/\.docx$/i.test(IMP.file.name)){
-    const msg='老式 .doc 格式无法直接解析：请用 Word 另存为 .docx，或复制内容后用“粘贴文本”导入。';
-    if(st)st.textContent=msg;toast('仅支持 .docx','err');return;
-  }
-  if(st)st.textContent='正在加载解析组件并解析…';
-  try{
-    await loadScript(MAMMOTH_CDN,()=>window.mammoth);
-    const buf=await fileToArrayBuffer(IMP.file);
-    const result=await window.mammoth.extractRawText({arrayBuffer:buf});
-    const text=(result&&result.value)||'';
-    if(!text.trim())throw new Error('文档中没有可提取的文字');
-    IMP.draft=text;
-    if(st)st.textContent='解析成功，进入预览…';
-    autoParseIntoPreview(text);
-  }catch(e){
-    const msg='Word 解析失败：'+(e.message||e)+'。可尝试：① 复制文档内容后用“粘贴文本”；② 使用 JSON 导入。';
-    if(st)st.textContent=msg;
-    toast('Word 解析失败','err');
-  }
-};
-ACTIONS['imp.pdf']=async()=>{
-  const st=$id('file-status');
-  if(!IMP.file){toast('请先选择 PDF 文件','warn');return;}
-  if(!/\.pdf$/i.test(IMP.file.name)){toast('请选择 PDF 文件','warn');return;}
-  if(st)st.textContent='正在加载解析组件并解析…';
-  try{
-    await loadScript(PDFJS_CDN,()=>window.pdfjsLib);
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;
-    const buf=await fileToArrayBuffer(IMP.file);
-    const doc=await window.pdfjsLib.getDocument({data:buf}).promise;
-    let text='';
-    for(let p=1;p<=doc.numPages;p++){
-      const pg=await doc.getPage(p);
-      const tc=await pg.getTextContent();
-      text+=tc.items.map(it=>it.str).join(' ')+'\n';
-    }
-    if(text.replace(/\s/g,'').length<10)throw new Error('未提取到文字层（可能是扫描版 / 图片型 PDF）');
-    IMP.draft=text;
-    if(st)st.textContent='解析成功，进入预览…';
-    autoParseIntoPreview(text);
-  }catch(e){
-    const msg='PDF 解析失败：'+(e.message||e)+'。可尝试：① 复制文字后用“粘贴文本”；② 使用 JSON 导入。';
-    if(st)st.textContent=msg;
-    toast('PDF 解析失败','err');
-  }
-};
 async function extractFileText(file){
   const name=(file.name||'').toLowerCase();
-  if(/\.docx$/.test(name)){
-    await loadScript(MAMMOTH_CDN,()=>window.mammoth);
-    const buf=await fileToArrayBuffer(file);
-    const result=await window.mammoth.extractRawText({arrayBuffer:buf});
-    return (result&&result.value)||'';
-  }
-  if(/\.pdf$/.test(name)){
-    await loadScript(PDFJS_CDN,()=>window.pdfjsLib);
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;
-    const buf=await fileToArrayBuffer(file);
-    const doc=await window.pdfjsLib.getDocument({data:buf}).promise;
-    let text='';
-    for(let p=1;p<=doc.numPages;p++){
-      const pg=await doc.getPage(p);
-      const tc=await pg.getTextContent();
-      text+=tc.items.map(it=>it.str).join(' ')+'\n';
-    }
-    if(text.replace(/\s/g,'').length<10)throw new Error('PDF 没有可提取的文字层（可能是扫描版，请用「OCR 扫描件」标签）');
-    return text;
-  }
-  if(/\.(txt|md)$/.test(name)){
+  if(/\.(txt|md|markdown|csv|json)$/.test(name)){
     if(file.text)return await file.text();
     return await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(file);});
   }
-  throw new Error('不支持的文件类型：'+file.name+'（支持 .json / .csv / .txt / .md / .xlsx / .xls / .docx / .pdf）');
+  throw new Error('不支持的文件类型：'+file.name+'（支持 .json / .csv / .txt / .md / .markdown）');
 }
 /* ================= 统一导入格式 =================
    题库 / 每日学习 / 教材 三个入口用同一串 accept，避免换个地方就要转格式 */
@@ -815,15 +741,6 @@ async function extractAnyText(file){
       const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('文件读取失败'));r.readAsText(file);
     });
     return {isJson:false,text:txt,json:null};
-  }
-  if(/\.(xlsx|xls)$/.test(name)){
-    await loadScript(XLSX_CDN,()=>window.XLSX);
-    const buf=await fileToArrayBuffer(file);
-    const wb=window.XLSX.read(buf,{type:'array'});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    const rows=window.XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-    const text=rows.map(r=>r.map(c=>String(c==null?'':c)).join('\t')).join('\n');
-    return {isJson:false,text:text,json:null};
   }
   const text=await extractFileText(file);
   return {isJson:false,text:text,json:null};
@@ -922,79 +839,6 @@ function xlsxToItems(rows){
   }
   return items;
 }
-ACTIONS['imp.xlsx']=async()=>{
-  const st=$id('xfile-status');
-  if(!IMP.xFile){toast('请先选择 Excel 文件','warn');return;}
-  if(st)st.textContent='正在加载解析组件…';
-  try{
-    await loadScript(XLSX_CDN,()=>window.XLSX);
-    const buf=await fileToArrayBuffer(IMP.xFile);
-    const wb=window.XLSX.read(buf,{type:'array'});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    if(!ws)throw new Error('工作簿为空');
-    const rows=window.XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-    const items=xlsxToItems(rows);
-    if(!items.length)throw new Error('没有解析到题目：请确认第一行是表头且「题干」列有内容');
-    if(st)st.textContent='解析成功：合法 '+items.filter(i=>i.ok).length+' 条，进入预览…';
-    openPreview({items,papers:[]});
-  }catch(e){
-    const msg='Excel 解析失败：'+(e.message||e);
-    if(st)st.textContent=msg;
-    toast('Excel 解析失败','err');
-  }
-};
-ACTIONS['imp.ocr']=async()=>{
-  const st=$id('ocr-status');
-  const files=(IMP.oFiles&&IMP.oFiles.length)?IMP.oFiles:[];
-  if(!files.length){toast('请先选择扫描 PDF 或图片','warn');return;}
-  const setSt=s=>{if(st)st.textContent=s;};
-  let worker=null;
-  try{
-    setSt('正在加载 OCR 组件（首次使用需联网下载语言包，请保持网络畅通）…');
-    await loadScript(TESS_CDN,()=>window.Tesseract);
-    worker=await window.Tesseract.createWorker('chi_sim+eng',1,{
-      workerPath:TESS_WORKER,corePath:TESS_CORE,langPath:TESS_LANG,
-      logger:m=>{if(m&&m.status==='recognizing text')setSt('识别中… '+Math.round((m.progress||0)*100)+'%');}
-    });
-    const imgs=[];
-    for(const f of files){
-      if(/\.pdf$/i.test(f.name)){
-        setSt('正在打开 PDF：'+f.name+'…');
-        await loadScript(PDFJS_CDN,()=>window.pdfjsLib);
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER;
-        const buf=await fileToArrayBuffer(f);
-        const doc=await window.pdfjsLib.getDocument({data:buf}).promise;
-        const n=Math.min(doc.numPages,30);
-        if(doc.numPages>n)toast('PDF 共 '+doc.numPages+' 页，本次仅识别前 '+n+' 页','warn');
-        for(let p=1;p<=n;p++){
-          setSt('渲染「'+f.name+'」第 '+p+' / '+n+' 页…');
-          const pg=await doc.getPage(p);
-          const vp=pg.getViewport({scale:2});
-          const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
-          await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-          imgs.push(cv.toDataURL('image/png'));
-        }
-      }else imgs.push(f);
-    }
-    let text='';
-    for(let i=0;i<imgs.length;i++){
-      setSt('识别第 '+(i+1)+' / '+imgs.length+' 张（中文识别较慢，请耐心等待）…');
-      const r=await worker.recognize(imgs[i]);
-      text+=((r&&r.data&&r.data.text)||'')+'\n';
-    }
-    try{await worker.terminate();}catch(e2){}
-    worker=null;
-    if(text.replace(/\s/g,'').length<20)throw new Error('识别出的文字过少，请检查扫描件清晰度');
-    IMP.draft=text;
-    setSt('识别完成，进入预览（OCR 结果建议人工核对后再导入）…');
-    autoParseIntoPreview(text);
-  }catch(e){
-    if(worker){try{await worker.terminate();}catch(e2){}}
-    setSt('OCR 失败：'+(e.message||e)+'\n可改用更清晰的扫描件，或复制文字后用「粘贴文本」。');
-    toast('OCR 失败','err');
-  }
-};
-
 /* ---- 格式示例 ---- */
 let exampleOpen=false;
 ACTIONS['imp.examples']=()=>{
@@ -1006,7 +850,7 @@ ACTIONS['imp.examples']=()=>{
       +'<button class="btn btn-plain btn-sm" data-act="ex.copy" data-k="'+kk+'">复制</button></div>'
       +'<pre class="ex-pre">'+esc(IMPORT_EXAMPLES[kk].content)+'</pre></div>';
   });
-  h+='<div class="file-note" style="margin-top:8px">Word（.docx）与 PDF 导入即提取纯文本后按“分题块式”规则解析，期望的文本形态同示例一。</div>';
+  h+='<div class="file-note" style="margin-top:8px">Markdown / TXT / CSV 导入即按“分题块式”规则解析，期望的文本形态同示例一。</div>';
   h+='<div class="m-btns"><button class="btn btn-primary" data-act="ex.close">关闭</button></div></div></div>';
   r.innerHTML=h;modalOpen=true;exampleOpen=true;
 };

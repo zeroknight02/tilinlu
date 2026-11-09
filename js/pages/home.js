@@ -5,7 +5,6 @@ PAGES.home.render=function(el){
   const t=totalsStat();
   const streak=answerStreak();
   const todayTotal=allModules().reduce((a,m)=>a+todayDoneOf(m),0);
-  const wc=weekCount(),wg=weekGoal();
   const _d=new Date();
   const dateStr=_d.getFullYear()+'年'+(_d.getMonth()+1)+'月'+_d.getDate()+'日 · 周'+'日一二三四五六'[_d.getDay()];
   const feats=[
@@ -15,7 +14,7 @@ PAGES.home.render=function(el){
     {page:'paperList',name:'真题训练',desc:'整卷限时作答',ico:'doc',g:['#60a5fa','#2563eb']},
     {page:'mistakeCats',name:'错题本',desc:'错题重刷 · 连对移出',ico:'pencil',g:['#f87171','#dc2626']},
     {page:'favs',name:'收藏夹',desc:'星标重点 · 集中重练',ico:'star',g:['#fbbf24','#f59e0b']},
-    {page:'topics',name:'专题',desc:'时政专题 · 自建集合',ico:'tag',g:['#a78bfa','#7c3aed']},
+    {page:'topics',name:'专题',desc:'时政专题 · 自建集合',ico:'tag',g:['#fb923c','#ea580c']},
     {page:'studyList',name:'教材梳理',desc:'导入教材 · 章节学习',ico:'library',g:['#94a3b8','#475569']},
     {page:'dailyLearn',name:'每日学习',desc:'单词 · 成语 · 诗词打卡',ico:'learn',g:['#22d3ee','#0891b2']}
   ];
@@ -28,7 +27,6 @@ PAGES.home.render=function(el){
       +'<div class="hero-kicker">本地题库 · '+esc(agoText())+'</div>'
       +'<div class="hero-num">'+BANK.length+'<span>道</span></div>'
       +'<div class="hero-sub">今日已完成 '+todayTotal+' 题 · 错题 '+WRONG.length+' 道'
-      +(wg>0?(' · 本周 '+wc+'/'+wg):'')+'</div>'
       +'<button class="hero-btn" data-act="go" data-page="modules">开始刷题</button>'
       +'<span class="hero-mark">题</span></div>'
     : '<div class="hero-empty">'
@@ -61,8 +59,7 @@ PAGES.home.render=function(el){
     +'<div class="sec-label">题库与备份</div>'
     +'<div class="bank-tools">'
     +'<div class="bt-item" data-act="go" data-page="records">'+icon('clock',17)+' 练习记录</div>'
-    +'<div class="bt-item" data-act="go" data-page="sync">'+icon('cloud',17)+' 同步设置</div>'
-    +'<div class="bt-item" data-act="go" data-page="importPage">'+icon('download',17)+' 导入题库</div>'
+    +(BANK.length?('<div class="bt-item" data-act="go" data-page="importPage">'+icon('download',17)+' 导入题库</div>'):'')
     +'<div class="bt-item" data-act="backup.export">'+icon('trayDown',17)+' 导出备份</div>'
     +'<div class="bt-item" data-act="backup.importPick">'+icon('trayUp',17)+' 导入备份</div>'
     +'</div>'
@@ -77,7 +74,7 @@ PAGES.home.render=function(el){
 /* ================= 自由刷题 · 模块列表 ================= */
 PAGES.modules={title:'自由刷题'};
 PAGES.modules.render=function(el){
-  const t=totalsStat(),plan=loadPlan();
+  const t=totalsStat(),plan=loadPlan(),td=todayStat();
   const dueN=srsDue().length;
   const f=curFilter(),mods=filterMods();
   const todayTotal=mods.reduce((s2,m)=>s2+todayDoneOf(m),0);
@@ -93,9 +90,9 @@ PAGES.modules.render=function(el){
   });
   el.innerHTML=topbarHTML(f?'自由刷题 · '+f:'自由刷题')
     +'<div class="stat-strip">'
-    +'<div class="ss"><div class="n">'+t.done+'</div><div class="l">总做题</div></div>'
-    +'<div class="ss"><div class="n">'+t.acc+'</div><div class="l">总正确率</div></div>'
-    +'<div class="ss"><div class="n" style="color:var(--coral)">'+WRONG.length+'</div><div class="l">错题数</div></div>'
+    +'<div class="ss"><div class="n">'+td.n+'</div><div class="l">今日做题</div></div>'
+    +'<div class="ss"><div class="n">'+td.acc+'</div><div class="l">今日正确率</div></div>'
+    +'<div class="ss"><div class="n" style="color:var(--coral)">'+td.wrong+'</div><div class="l">今日答错</div></div>'
     +'</div>'
     +'<div class="mod-tools">'
     +'<button class="mt-seg" data-act="daily.open">'+icon('clock',14)+'<span>每日计划</span></button>'

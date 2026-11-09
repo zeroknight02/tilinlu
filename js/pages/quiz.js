@@ -28,7 +28,7 @@ function gradeSubjective(q,ansText){
 function quizState(){
   const p=curPage().page;
   if(p==='practice')return PS;
-  if(p==='mistakePractice')return MS;
+  if(p==='setPractice')return MS;
   return null;
 }
 let FONT_SIZE='md';
@@ -82,7 +82,7 @@ function curQ(){
   const p=curPage();
   if(!p)return null;
   if(p.page==='practice'&&PS)return PS.qs[PS.idx]||null;
-  if(p.page==='mistakePractice'&&MS)return MS.qs[MS.idx]||null;
+  if(p.page==='setPractice'&&MS)return MS.qs[MS.idx]||null;
   if(p.page==='exam'&&EX)return bankQ(EX.s.questionIds[EX.idx]);
   if(p.page==='questionDetail')return bankQ(p.params.questionId);
   return null;
@@ -213,7 +213,7 @@ function afterQuizJudge(q,correct,userAns){
     PS.wrongCount=wrongCountOf(PS.m);
     PS.answered++;if(correct)PS.right++;else PS.wrong++;
     const wc=$id('quiz-wc');if(wc)wc.innerHTML='错题 <b>'+PS.wrongCount+'</b> 题';
-  }else if(page==='mistakePractice'){
+  }else if(page==='setPractice'){
     /* 从搜索结果进来的练习只判对错，不动错题本的"连对移出"状态 */
     if(curPage().params.soft==='1'){MS.right+=(correct?1:0);MS.wrong+=(correct?0:1);return;}
     const r=applyMistakeResult(q,correct);
@@ -248,7 +248,7 @@ ACTIONS['quiz.next']=()=>{
     PS.idx++;PS.locked=false;PS.sel=new Set();PS.essayOpen=false;
     const b=$id('quiz-body');if(b)b.innerHTML=quizQHTML(PS);
     updateFavBtn();
-  }else if(page==='mistakePractice'){mpNext();}
+  }else if(page==='setPractice'){mpNext();}
 };
 
 /* 本轮总结：只统计这次打开后做的题，不是整组题数 */
@@ -426,8 +426,6 @@ PAGES.practice.render=function(el,params){
   const shuf=(params.shuffle!=null)?params.shuffle==='1':lsGet(K.pshuffle)==='1';
   let qs,idx;
   if(mode==='review'){qs=srsDue().map(id=>bankQ(id)).filter(Boolean);idx=0;}
-  else if(mode==='wrong'){qs=shuffle(wrongQsOf(m));idx=0;}
-  else if(mode==='fav'){qs=shuffle(favQsOf(m));idx=0;}
   else if(mode==='topic'){
     const tp=topicById(params.topicId);
     qs=(tp?tp.ids:[]).map(id=>bankQ(id)).filter(Boolean);
@@ -435,10 +433,9 @@ PAGES.practice.render=function(el,params){
   }
   else{qs=bankOf(m);if(shuf){qs=shuffle(qs);idx=0;}else{idx=getProg(m);if(idx>=qs.length)idx=0;}}
   if(!qs.length){
-    const tip=mode==='review'?'今天没有到期的复习题目，明天再来看看':(mode==='topic'?'这个专题还没有题目：刷题时点右上角「⋯ → 加入专题」收录':(mode==='fav'?'该模块暂无收藏题目：在刷题、错题本或详情页点「☆ 收藏本题」即可加入':(mode==='wrong'?'该模块暂无错题':'该模块暂无题目，可先导入题库')));
+    const tip=mode==='review'?'今天没有到期的复习题目，明天再来看看':(mode==='topic'?'这个专题还没有题目：刷题时点右上角「⋯ → 加入专题」收录':'该模块暂无题目，可先导入题库');
     el.innerHTML=topbarHTML(mode==='review'?'间隔复习':m,'自由刷题')+'<div class="card miss-empty">'+esc(tip)+'</div>'
       +'<div class="botbar"><div class="botbar-in">'
-      +'<button class="btn btn-plain btn-sm" data-act="prax.wrongOnly">'+(mode==='all'?'只看错题':(mode==='wrong'?'只看收藏':'全部题目'))+'</button>'
       +'<button class="btn btn-plain btn-sm" data-act="prax.shuffle">'+(shuf?'随机中':'顺序中')+'</button>'
       +'<button class="btn btn-primary btn-big" data-act="nav.back">返回</button>'
       +'</div></div>';
@@ -454,7 +451,6 @@ PAGES.practice.render=function(el,params){
       +'<button class="btn btn-plain btn-sm" data-act="prax.card">答题卡</button>'
       +'</div>'
     :'<div class="qb-tools">'
-      +'<button class="btn btn-plain btn-sm" data-act="prax.wrongOnly">'+(mode==='all'?'只看错题':(mode==='wrong'?'只看收藏':'全部题目'))+'</button>'
       +'<button class="btn btn-plain btn-sm" data-act="prax.shuffle">'+(shuf?'随机中':'顺序中')+'</button>'
       +'<button class="btn btn-ghost btn-sm" id="quiz-fav" data-act="quiz.fav">'+(PS.qs[PS.idx]&&isFav(PS.qs[PS.idx].id)?'★ 已收藏':'☆ 收藏本题')+'</button>'
       +'<button class="btn btn-plain btn-sm" data-act="prax.card">答题卡</button>'
@@ -470,13 +466,6 @@ PAGES.practice.render=function(el,params){
     +'</div>'
     +'</div></div>'
     +'<button class="focus-exit" data-act="prax.focus">退出专注</button>';
-};
-ACTIONS['prax.wrongOnly']=()=>{
-  const c=curPage();
-  if(c.params.mode==='review'){toast('复习队列是固定的，不能切换模式','warn');return;}
-  const seq=['all','wrong','fav'];
-  const cur=seq.indexOf(c.params.mode||'all');
-  reRender({mode:seq[(cur+1)%3]});
 };
 ACTIONS['prax.shuffle']=()=>{
   const c=curPage();
@@ -511,20 +500,19 @@ PAGES.mistakeCats.render=function(el){
       +'<div class="m-right">'+(n?'›':'—')+'</div></div>';
   });
   el.innerHTML=topbarHTML('错题本')
-    +'<div class="stat-strip"><div class="ss"><div class="n" style="color:var(--coral)">'+WRONG.length+'</div><div class="l">总错题</div></div></div>'
     +'<div class="row" style="margin:6px 4px 10px"><button class="btn btn-plain btn-sm" data-act="mc.list">📋 查看错题列表</button>'
     +'<span class="muted">答对 3 次自动移出</span></div>'+cards;
 };
-ACTIONS['mc.enter']=d=>{if(!wrongCountOf(d.m)){toast('该模块暂无错题','warn');return;}goTo('mistakePractice',{module:d.m});};
+ACTIONS['mc.enter']=d=>{if(!wrongCountOf(d.m)){toast('该模块暂无错题','warn');return;}goTo('setPractice',{module:d.m});};
 ACTIONS['mc.list']=()=>goTo('mistakeList',{});
 
 /* ---- 错题刷题页 ---- */
-PAGES.mistakePractice={title:'错题刷题'};
-PAGES.mistakePractice.render=function(el,params){
+PAGES.setPractice={title:'题目练习'};
+PAGES.setPractice.render=function(el,params){
   const m=params.module||'';
   const label=params.label||'错题刷题';
   if(allModules().indexOf(m)<0){
-    el.innerHTML=topbarHTML('错题刷题')+'<div class="card miss-empty">参数错误</div>';return;
+    el.innerHTML=topbarHTML('题目练习')+'<div class="card miss-empty">参数错误</div>';return;
   }
   let qs;
   if(params.only&&params.only.length)qs=params.only.map(id=>bankQ(id)).filter(Boolean);
@@ -616,13 +604,28 @@ PAGES.mistakeList.render=function(el,params){
   });
   el.innerHTML=topbarHTML('错题列表 · 共 '+list.length+' 题')+tools+rows;
 };
-ACTIONS['ml.expand']=(d,t)=>{
-  const card=t.closest('.wrong-row');if(!card)return;
+/* 收藏夹与错题本共用的三个动作，避免两套近似实现 */
+function toggleRowDetail(btn,sel){
+  const card=btn.closest(sel);if(!card)return;
   const det=card.querySelector('.w-detail');if(!det)return;
   const show=det.style.display==='none';
   det.style.display=show?'block':'none';
-  t.textContent=show?'收起解析':'展开解析';
-};
+  btn.textContent=show?'收起解析':'展开解析';
+}
+function replayOne(id,label){
+  const q=bankQ(id);if(!q)return;
+  const p={module:q.module,only:[id]};
+  if(label)p.label=label;
+  goTo('setPractice',p);
+}
+function replayMany(ids,label,emptyMsg){
+  if(!ids.length){toast(emptyMsg||'没有可练习的题目','warn');return;}
+  const use=ids.slice(0,80);
+  const q0=bankQ(use[0]);
+  goTo('setPractice',{module:q0?q0.module:'常识判断',only:use,label:label});
+}
+
+ACTIONS['ml.expand']=(d,t)=>{toggleRowDetail(t,'.wrong-row');};
 ACTIONS['ml.tagFilter']=d=>{reRender({tag:d.t||''});};
 ACTIONS['ml.tag']=d=>{
   const w=WRONG.filter(x=>x.questionId===d.id)[0];if(!w)return;
@@ -665,10 +668,7 @@ ACTIONS['ml.print']=()=>{
   root.innerHTML=h;
   setTimeout(()=>{window.print();},80);
 };
-ACTIONS['ml.redo']=d=>{
-  const q=bankQ(d.id);if(!q)return;
-  goTo('mistakePractice',{module:q.module,only:[q.id]});
-};
+ACTIONS['ml.redo']=d=>{replayOne(d.id);};
 ACTIONS['ml.remove']=d=>{
   removeWrong(d.id);
   toast('已移出错题本','ok');
@@ -682,10 +682,7 @@ ACTIONS['ml.practiceAll']=()=>{
   if(c.params.f2==='1')list=list.filter(w=>(w.wrongCount||1)>=2);
   if(c.params.sort==='count')list=list.slice().sort((a,b)=>(b.wrongCount||1)-(a.wrongCount||1));
   else list=list.slice().sort((a,b)=>(b.lastWrongAt||0)-(a.lastWrongAt||0));
-  if(!list.length){toast('没有可重练的错题','warn');return;}
-  const ids=list.map(w=>w.questionId).slice(0,80);
-  const q0=bankQ(ids[0]);
-  goTo('mistakePractice',{module:q0?q0.module:'常识判断',only:ids,label:'错题重练'});
+  replayMany(list.map(w=>w.questionId),'错题重练','没有可重练的错题');
 };
 
 /* ---- 收藏夹 ---- */
@@ -715,22 +712,7 @@ PAGES.favs.render=function(el){
     +'<div class="row" style="margin:6px 4px 10px"><button class="btn btn-primary btn-sm" data-act="fv.practiceAll">▶ 连续练习收藏题（最多 80 题）</button></div>'
     +rows;
 };
-ACTIONS['fv.expand']=(d,t)=>{
-  const card=t.closest('.fav-row');if(!card)return;
-  const det=card.querySelector('.w-detail');if(!det)return;
-  const show=det.style.display==='none';
-  det.style.display=show?'block':'none';
-  t.textContent=show?'收起解析':'展开解析';
-};
-ACTIONS['fv.redo']=d=>{
-  const q=bankQ(d.id);if(!q)return;
-  goTo('mistakePractice',{module:q.module,only:[q.id],label:'收藏题练习'});
-};
+ACTIONS['fv.expand']=(d,t)=>{toggleRowDetail(t,'.fav-row');};
+ACTIONS['fv.redo']=d=>{replayOne(d.id,'收藏题练习');};
 ACTIONS['fv.remove']=d=>{toggleFav(d.id);toast('已取消收藏','ok');reRender();};
-ACTIONS['fv.practiceAll']=()=>{
-  const qs=favQsOf('');
-  if(!qs.length){toast('收藏夹是空的','warn');return;}
-  const ids=qs.map(q=>q.id).slice(0,80);
-  const q0=bankQ(ids[0]);
-  goTo('mistakePractice',{module:q0?q0.module:'常识判断',only:ids,label:'收藏题练习'});
-};
+ACTIONS['fv.practiceAll']=()=>{replayMany(favQsOf('').map(q=>q.id),'收藏题练习','收藏夹是空的');};

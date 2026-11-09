@@ -131,12 +131,6 @@ function qtConfirm(opt){
   modalOpen=true;
   window.__modalOk=()=>{closeModal();opt.onOk&&opt.onOk();};
 }
-function showBanner(msg){
-  let b=$id('top-banner');
-  if(!b){b=document.createElement('div');b.id='top-banner';b.className='top-banner';
-    b.setAttribute('data-act','banner.dismiss');document.body.appendChild(b);}
-  b.textContent=msg;b.style.display='block';
-}
 function fmtAns(q,ansVal){
   if(q.type==='blank'){
     if(Array.isArray(ansVal)){
@@ -196,8 +190,7 @@ const ACTIONS={
   'go':d=>goTo(d.page,d.params?JSON.parse(d.params):{}),
   'modal.mask':(d,t,e)=>{if(e.target.classList.contains('mask'))closeModal();},
   'modal.cancel':()=>closeModal(),
-  'modal.ok':()=>{const f=window.__modalOk;window.__modalOk=null;f&&f();},
-  'banner.dismiss':()=>{const b=$id('top-banner');if(b)b.style.display='none';}
+  'modal.ok':()=>{const f=window.__modalOk;window.__modalOk=null;f&&f();}
 };
 document.addEventListener('click',e=>{
   const t=e.target.closest('[data-act]');

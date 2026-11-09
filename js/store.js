@@ -223,24 +223,14 @@ const IMPORT_EXAMPLES={
   json:{title:'示例三：JSON（可同时带套卷 papers，适合云端同步）',content:
 '{\n  "questions": [\n    {\n      "id": "demo-001",\n      "exam": "国考",\n      "subject": "行测",\n      "module": "政治理论",\n      "type": "single",\n      "q": "党的二十大报告指出，高质量发展是全面建设社会主义现代化国家的（ ）。",\n      "o": ["首要任务", "基本任务", "重要任务", "根本任务"],\n      "a": 0,\n      "e": "党的二十大报告明确：高质量发展是全面建设社会主义现代化国家的首要任务。"\n    }\n  ],\n  "papers": [\n    {"id": "paper-demo", "title": "示例卷", "exam": "国考", "year": 2024, "minutes": 120, "level": "副省级", "questionIds": ["demo-001"]}\n  ]\n}'}
 };
-const MAMMOTH_CDN='https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js';
-const PDFJS_CDN='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
-const PDFJS_WORKER='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-const XLSX_CDN='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-const TESS_CDN='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
-const TESS_WORKER='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js';
-const TESS_CORE='https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0/';
-const TESS_LANG='https://tessdata.projectnaptha.com/4.0.0_fast';
-const CLOUD_DEFAULT='https://cdn.jsdelivr.net/gh/你的用户名/题库仓库@main/questions.json';
 
 /* ================= 内置示例题的 id（仅用于清理旧数据，不再灌入） ================= */
-const DEMO_IDS={'q-001':1,'q-002':1,'q-003':1,'q-004':1,'q-005':1,'q-006':1,'q-007':1,'q-008':1,'q-009':1,'q-010':1,'q-011':1,'q-012':1,'q-013':1,'q-014':1,'q-015':1,'q-016':1};
 
 /* ================= 版本 ================= */
-const APP_VER='v2.5.2';
-const APP_BUILD=50;
-const APP_DATE='2026-11-02';
-/* 正式版已启用（2026-11-02）：
+const APP_VER='v2.6.3';
+const APP_BUILD=55;
+const APP_DATE='2026-11-09';
+/* 正式版已启用（2026-11-09）：
    任何「更新时自动清理本地数据」的逻辑都会被强制跳过，
    只允许追加或修正数据，不允许删除用户内容。 */
 const DATA_RELEASE=true;
@@ -250,12 +240,13 @@ const K={bank:'qt_questions',bankTime:'qt_bank_time',
   stats:'qt_stats',wrong:'qt_wrong',plan:'qt_daily_plan',ai:'qt_ai',
   fav:'qt_fav',recs:'qt_records',pshuffle:'qt_prax_shuffle',
   extraMods:'qt_extra_modules',tcPass:'qt_tc_pass',autoPass:'qt_auto_pass',
-  cloudUrl:'qt_cloud_url',cloudTime:'qt_cloud_time',cloudCache:'qt_cloud_cache',theme:'qt_theme',books:'qt_books',customExams:'qt_custom_exams',demoPurged:'qt_demo_purged',snapshot:'qt_snapshot',learn:'qt_learn',fontSize:'qt_font_size',optShuffle:'qt_opt_shuffle',srs:'qt_srs',weekGoal:'qt_week_goal',topics:'qt_topics',studyCats:'qt_study_cats',studyCat:'qt_study_cat',bankRescue:'qt_bank_rescue',imgtab:'qt_imgtab',build:'qt_build',filter:'qt_filter',examMods:'qt_exam_modules',scoreOv:'qt_score_override'};
+  theme:'qt_theme',books:'qt_books',customExams:'qt_custom_exams',snapshot:'qt_snapshot',learn:'qt_learn',fontSize:'qt_font_size',optShuffle:'qt_opt_shuffle',srs:'qt_srs',topics:'qt_topics',studyCats:'qt_study_cats',studyCat:'qt_study_cat',bankRescue:'qt_bank_rescue',imgtab:'qt_imgtab',build:'qt_build',filter:'qt_filter',examMods:'qt_exam_modules',scoreOv:'qt_score_override'};
 const progKey=m=>'qt_progress_'+m;
 /* ---- 存储：IndexedDB 落盘，内存镜像保证同步读写 ---- */
 const DB_NAME='tilinlu',DB_STORE='kv',DB_VER=1;
 let IDB=null,USE_IDB=false,STORE_MODE='idb',MIGRATED=false;
 let MEM=Object.create(null),DIRTY=new Map(),FLUSH_TIMER=0,FLUSH_RETRY=0;
+let STORAGE_LOCKED=false;   /* 数据库读取失败时禁止把空镜像写回原库 */
 
 function dbOpen(){
   return new Promise((res,rej)=>{
@@ -280,6 +271,7 @@ function dbAll(db){
 }
 function dbWrite(pairs){
   return new Promise((res,rej)=>{
+    if(STORAGE_LOCKED)return rej(new Error('数据读取失败，已禁止写入'));
     if(!USE_IDB||!IDB)return res(0);
     let tx;
     try{tx=IDB.transaction(DB_STORE,'readwrite');}catch(e){return rej(e);}
@@ -309,11 +301,13 @@ function toastSafe(msg){try{if(typeof toast==='function')toast(msg,'warn');}catc
 
 const lsGet=k=>(k in MEM)?MEM[k]:null;
 const lsSet=(k,v)=>{
+  if(STORAGE_LOCKED)throw new Error('数据读取失败，已禁止写入');
   MEM[k]=String(v);
   if(USE_IDB){DIRTY.set(k,MEM[k]);scheduleFlush();}
   else{try{localStorage.setItem(k,MEM[k]);}catch(e){}}
 };
 const lsDel=k=>{
+  if(STORAGE_LOCKED)throw new Error('数据读取失败，已禁止删除');
   delete MEM[k];
   if(USE_IDB){DIRTY.set(k,null);scheduleFlush();}
   else{try{localStorage.removeItem(k);}catch(e){}}
@@ -335,7 +329,11 @@ async function bootStorage(){
   if(!db){USE_IDB=false;STORE_MODE='local';Object.assign(MEM,old);return;}
   IDB=db;USE_IDB=true;
   let all={};
-  try{all=await dbAll(db);}catch(e){all={};}
+  try{all=await dbAll(db);}catch(e){
+    STORAGE_LOCKED=true;USE_IDB=false;STORE_MODE='locked';
+    try{db.close();}catch(_){}IDB=null;
+    return;   /* 读取失败不等于空数据库，不迁移、不覆盖 */
+  }
   if(!Object.keys(all).length&&Object.keys(old).length){
     const pairs=Object.keys(old).map(k=>[k,old[k]]);
     try{await dbWrite(pairs);}catch(e){
@@ -533,27 +531,6 @@ function guardData(){
   }
   lsSet(K.build,String(APP_BUILD));
 }
-/* 一次性清理：删掉旧版本内置示例题，以及它们留下的统计、错题、收藏、记录
-   只处理 DEMO_IDS 里的题，用户自己导入的题目不受影响
-   正式版（DATA_RELEASE=true）下永久跳过，绝不删数据 */
-function purgeDemoData(){
-  if(DATA_RELEASE)return;
-  if(lsGet(K.demoPurged)==='1')return;
-  let changed=false;
-  if(BANK.some(q=>DEMO_IDS[q.id])){
-    BANK=BANK.filter(q=>!DEMO_IDS[q.id]);
-    PAPERS=PAPERS.filter(p=>{const qs=p.questionIds||[];return !(qs.length&&qs.every(id=>DEMO_IDS[id]));});
-    changed=true;
-  }
-  if(STATS.ans){Object.keys(STATS.ans).forEach(id=>{if(DEMO_IDS[id]){delete STATS.ans[id];changed=true;}});}
-  const w0=WRONG.length;WRONG=WRONG.filter(w=>!DEMO_IDS[w.questionId]);if(WRONG.length!==w0)changed=true;
-  const f0=FAV.length;FAV=FAV.filter(id=>!DEMO_IDS[id]);if(FAV.length!==f0)changed=true;
-  const r0=RECS.length;RECS=RECS.filter(r=>{const qs=r.questionIds||[];return !(qs.length&&qs.every(id=>DEMO_IDS[id]));});if(RECS.length!==r0)changed=true;
-  if(changed){
-    saveBank();saveStats();saveWrong();saveFav();saveRecs();
-  }
-  lsSet(K.demoPurged,'1');
-}
 function bankOf(m){return BANK.filter(q=>q.module===m);}
 function bankQ(id){return BANK.find(q=>q.id===id);}
 function agoText(){
@@ -595,7 +572,7 @@ function loadSrs(){
   const d=lsJson(K.srs,null);
   SRS=(d&&typeof d==='object'&&!Array.isArray(d))?d:{};
   /* 题库里已经没有的题，复习记录一并清掉（题库为空时不动，避免误删） */
-  if(BANK.length){
+  if(BANK.length&&!DATA_RELEASE){
     const ids={};BANK.forEach(q=>{ids[q.id]=1;});
     let cut=0;
     Object.keys(SRS).forEach(id=>{if(!ids[id]){delete SRS[id];cut++;}});
@@ -645,10 +622,14 @@ function weekCount(){
   Object.keys(STATS.day||{}).forEach(k=>{if(k>=s)n+=(STATS.day[k].n||0);});
   return n;
 }
-function weekGoal(){return parseInt(lsGet(K.weekGoal)||'0',10)||0;}
-function setWeekGoal(n){lsSet(K.weekGoal,String(n||0));}
 function qHistory(id){return (STATS.hist&&STATS.hist[id])||[];}
 function dayStat(k){return (STATS.day&&STATS.day[k])||{n:0,c:0};}
+/* 当天数据：做题数 / 正确率 / 答错数 */
+function todayStat(){
+  const o=dayStat(todayStr());
+  const n=o.n||0,c=o.c||0;
+  return {n:n,acc:n?Math.round(c*100/n)+'%':'—',wrong:Math.max(0,n-c)};
+}
 function totalsStat(){
   let done=0,right=0,wrong=0;
   Object.keys(STATS.ans).forEach(id=>{const r=STATS.ans[id];done++;if(r.c===1)right++;else if(r.c===0)wrong++;});
@@ -685,7 +666,9 @@ function pruneImages(){
   const mark=v=>{if(typeof v==='string'&&v.charAt(0)==='@')used[v.slice(1)]=1;};
   BANK.forEach(q=>{
     if(Array.isArray(q.imgs))q.imgs.forEach(mark);
-    if(q.img)mark(q.img);
+    if(Array.isArray(q.oimg))q.oimg.forEach(mark);
+    if(Array.isArray(q.eimgs))q.eimgs.forEach(mark);
+    mark(q.img);mark(q.matImg);
   });
   let del=0;
   Object.keys(IMG_TAB).forEach(k=>{if(!used[k]){delete IMG_TAB[k];del++;}});
@@ -714,7 +697,7 @@ function loadWrong(){
   if(!Array.isArray(WRONG))WRONG=[];
   /* 题库为空（没导入过，或题库文件读坏了）时绝不清理错题，
      否则一次读取失败就会把整本错题写没 */
-  if(!BANK.length)return;
+  if(DATA_RELEASE||!BANK.length)return;
   const before=WRONG.length;
   WRONG=WRONG.filter(w=>w&&w.questionId&&bankQ(w.questionId));
   if(WRONG.length!==before)saveWrong();
@@ -745,7 +728,7 @@ let FAV=[];
 function loadFav(){
   FAV=lsJson(K.fav,[]);
   if(!Array.isArray(FAV))FAV=[];
-  if(!BANK.length)return;   /* 同上：题库读不出来时不动收藏 */
+  if(DATA_RELEASE||!BANK.length)return;   /* 正式版不因题库变动自动删收藏 */
   const before=FAV.length;
   FAV=FAV.filter(id=>bankQ(id));
   if(FAV.length!==before)saveFav();
